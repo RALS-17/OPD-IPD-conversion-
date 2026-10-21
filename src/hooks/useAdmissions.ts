@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Admission, PhysicianStats, KpiMode, RankedItem, PatientType } from '../types';
+import type { Admission, PhysicianStats, RankedItem, PatientType } from '../types';
 import {
   isSupabaseConfigured,
   fetchAdmissions,
@@ -203,81 +203,6 @@ export const SAMPLE_ADMISSIONS: Admission[] = [
   },
 ];
 
-const DEMO_KPIS = {
-  totalOpd: 2842,
-  advised: 312,
-  actual: 98,
-  conversion: 31.4,
-};
-
-const DEMO_MIX = {
-  hmo: 186,
-  cash: 126,
-  private: 210,
-  walkIn: 102,
-  hmoPct: 59.6,
-  cashPct: 40.4,
-};
-
-const DEMO_PHYSICIAN_STATS: PhysicianStats[] = [
-  {
-    physician: 'Dr. Jose Reyes',
-    totalOpdConsults: 186,
-    opdAdvisedAdmission: 72,
-    actualAdmissionsFromOpd: 72,
-    conversionRate: 38.7,
-    totalAdmissions: 112,
-  },
-  {
-    physician: 'Dr. Maria Santos',
-    totalOpdConsults: 210,
-    opdAdvisedAdmission: 74,
-    actualAdmissionsFromOpd: 74,
-    conversionRate: 35.2,
-    totalAdmissions: 98,
-  },
-  {
-    physician: 'Dr. Angelo Cruz',
-    totalOpdConsults: 158,
-    opdAdvisedAdmission: 53,
-    actualAdmissionsFromOpd: 53,
-    conversionRate: 33.5,
-    totalAdmissions: 77,
-  },
-  {
-    physician: 'Dr. Liza Mendoza',
-    totalOpdConsults: 174,
-    opdAdvisedAdmission: 55,
-    actualAdmissionsFromOpd: 55,
-    conversionRate: 31.6,
-    totalAdmissions: 64,
-  },
-  {
-    physician: 'Dr. Paolo Enriquez',
-    totalOpdConsults: 142,
-    opdAdvisedAdmission: 44,
-    actualAdmissionsFromOpd: 44,
-    conversionRate: 31.0,
-    totalAdmissions: 53,
-  },
-];
-
-const DEMO_TOP_DIAGNOSES: RankedItem[] = [
-  { name: 'Viral Pneumonia', count: 48 },
-  { name: 'Acute Gastritis', count: 36 },
-  { name: 'Hypertensive Urgency', count: 29 },
-  { name: 'COPD Exacerbation', count: 24 },
-  { name: 'Bronchial Asthma', count: 21 },
-];
-
-const DEMO_TOP_COMPLAINTS: RankedItem[] = [
-  { name: 'Lagnat, Ubo', count: 52 },
-  { name: 'Sakit ng tiyan', count: 41 },
-  { name: 'Hirap huminga', count: 33 },
-  { name: 'Sakit sa dibdib', count: 28 },
-  { name: 'High blood, dizziness', count: 22 },
-];
-
 function normalizeAdmission(raw: Partial<Admission> & { id: string }): Admission {
   let time = raw.timeOfAdmission || '';
   if (!time && raw.createdAt) {
@@ -320,7 +245,6 @@ function rankField(
   admissions.forEach((a) => {
     let key = (a[field] || '').trim();
     if (!key) return;
-    // Normalize complaint for grouping (strip duration suffixes like "- 2 Days")
     if (field === 'chiefComplaint') {
       key = key.replace(/\s*-\s*\d+\s*Days?/i, '').trim();
     }
@@ -464,39 +388,30 @@ export function useAdmissions() {
   }, [admissions]);
 
   const getLivePhysicianStats = useCallback((): PhysicianStats[] => {
+    // Conversion rate is based ONLY on OPD Attending Physician (not Admitting Physician)
     const map = new Map<string, PhysicianStats>();
 
     admissions.forEach((a) => {
-      if (a.opdAttendingPhysician) {
-        if (!map.has(a.opdAttendingPhysician)) {
-          map.set(a.opdAttendingPhysician, {
-            physician: a.opdAttendingPhysician,
-            totalOpdConsults: 0,
-            opdAdvisedAdmission: 0,
-            actualAdmissionsFromOpd: 0,
-            conversionRate: 0,
-            totalAdmissions: 0,
-          });
-        }
-        const stats = map.get(a.opdAttendingPhysician)!;
-        stats.totalOpdConsults += 1;
-        if (a.advisedForAdmission === 'Yes') stats.opdAdvisedAdmission += 1;
-        if (a.actuallyAdmitted === 'Yes' && a.source === 'OPD') {
-          stats.actualAdmissionsFromOpd += 1;
-        }
+      const name = (a.opdAttendingPhysician || '').trim();
+      if (!name) return;
+
+      if (!map.has(name)) {
+        map.set(name, {
+          physician: name,
+          totalOpdConsults: 0,
+          opdAdvisedAdmission: 0,
+          actualAdmissionsFromOpd: 0,
+          conversionRate: 0,
+          totalAdmissions: 0,
+        });
       }
-      if (a.admittingPhysician && a.actuallyAdmitted === 'Yes') {
-        if (!map.has(a.admittingPhysician)) {
-          map.set(a.admittingPhysician, {
-            physician: a.admittingPhysician,
-            totalOpdConsults: 0,
-            opdAdvisedAdmission: 0,
-            actualAdmissionsFromOpd: 0,
-            conversionRate: 0,
-            totalAdmissions: 0,
-          });
-        }
-        map.get(a.admittingPhysician)!.totalAdmissions += 1;
+      const stats = map.get(name)!;
+      stats.totalOpdConsults += 1;
+      if (a.advisedForAdmission === 'Yes') stats.opdAdvisedAdmission += 1;
+      // Count as converted admission under this attending physician
+      if (a.actuallyAdmitted === 'Yes') {
+        stats.actualAdmissionsFromOpd += 1;
+        stats.totalAdmissions += 1;
       }
     });
 
