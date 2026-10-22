@@ -111,6 +111,7 @@ export default function Physicians({
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+              maxLength={80}
             />
           </div>
           <div>
@@ -186,6 +187,7 @@ export default function Physicians({
                           className={field}
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
+                          maxLength={80}
                         />
                       ) : (
                         <span className="font-medium text-slate-800">{p.name}</span>

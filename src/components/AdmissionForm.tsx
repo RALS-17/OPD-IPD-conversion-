@@ -122,6 +122,7 @@ export default function AdmissionForm({
                   onChange={handleChange}
                   className={field}
                   placeholder="Enter patient name"
+                  maxLength={100}
                 />
               </div>
 
@@ -134,6 +135,7 @@ export default function AdmissionForm({
                   onChange={handleChange}
                   className={field}
                   placeholder="Enter address"
+                  maxLength={200}
                 />
               </div>
 
@@ -185,6 +187,7 @@ export default function AdmissionForm({
                   onChange={handleChange}
                   className={field}
                   placeholder="Enter chief complaint"
+                  maxLength={150}
                 />
               </div>
 
@@ -196,6 +199,7 @@ export default function AdmissionForm({
                   onChange={handleChange}
                   className={field}
                   placeholder="Enter diagnosis"
+                  maxLength={150}
                 />
               </div>
             </div>
@@ -321,6 +325,7 @@ export default function AdmissionForm({
                   rows={2}
                   className={`${field} resize-none`}
                   placeholder="Enter remarks (optional)"
+                  maxLength={300}
                 />
               </div>
             </div>

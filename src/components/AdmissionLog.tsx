@@ -92,6 +92,7 @@ export default function AdmissionLog({
               placeholder="Search patients, diagnosis, physician..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              maxLength={80}
               className="w-full pl-8 pr-3 py-1.5 text-[12px] border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30 focus:border-[#1348f3] placeholder:text-slate-400"
             />
           </div>

@@ -16,6 +16,7 @@ interface SidebarProps {
   onToggle: () => void;
   hospitalName: string;
   branch: string;
+  isAdmin: boolean;
 }
 
 const mainNav: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
@@ -32,6 +33,7 @@ export default function Sidebar({
   onToggle,
   hospitalName,
   branch,
+  isAdmin,
 }: SidebarProps) {
   const navBtn = (id: Page, label: string, Icon: typeof LayoutDashboard) => {
     const isActive = currentPage === id;
@@ -96,7 +98,9 @@ export default function Sidebar({
       </div>
 
       <nav className={`flex-1 py-3 space-y-0.5 ${collapsed ? 'px-1.5' : 'px-2.5'}`}>
-        {mainNav.map((item) => navBtn(item.id, item.label, item.icon))}
+        {mainNav
+          .filter((item) => isAdmin || item.id !== 'dashboard')
+          .map((item) => navBtn(item.id, item.label, item.icon))}
       </nav>
 
       {/* Settings just above footer */}

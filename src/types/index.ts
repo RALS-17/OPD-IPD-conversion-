@@ -4,6 +4,8 @@ export type HhoCash = 'HHO' | 'CASH';
 export type YesNo = 'Yes' | 'No';
 export type PatientType = 'Private' | 'Walk-in';
 
+export type UserRole = 'admin' | 'staff';
+
 export interface Admission {
   id: string;
   patientName: string;

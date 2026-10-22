@@ -1,20 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import AdmissionLog from './components/AdmissionLog';
 import PhysicianSummary from './components/PhysicianSummary';
 import Physicians from './components/Physicians';
 import Settings from './components/Settings';
+import Login from './components/Login';
 import PageSkeleton from './components/PageSkeleton';
 import { useAdmissions } from './hooks/useAdmissions';
 import { useSettings } from './hooks/useSettings';
 import { usePhysicians } from './hooks/usePhysicians';
+import { useAuth } from './hooks/useAuth';
 import type { Page } from './types';
-import { Bell, Search } from 'lucide-react';
+import { Bell, LogOut } from 'lucide-react';
 
 export default function App() {
+  const {
+    profile,
+    loading: authLoading,
+    error: authError,
+    setError: setAuthError,
+    signIn,
+    signOut,
+    isAuthenticated,
+    isAdmin,
+  } = useAuth();
+
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
+
+  // Staff cannot open dashboard
+  useEffect(() => {
+    if (isAuthenticated && !isAdmin && currentPage === 'dashboard') {
+      setCurrentPage('admission-log');
+    }
+  }, [isAuthenticated, isAdmin, currentPage]);
 
   const {
     admissions,
@@ -46,6 +66,20 @@ export default function App() {
     usingSupabase,
   } = usePhysicians();
 
+  if (authLoading) {
+    return <PageSkeleton page={currentPage} collapsed={collapsed} />;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <Login
+        onLogin={signIn}
+        error={authError}
+        onClearError={() => setAuthError(null)}
+      />
+    );
+  }
+
   if (!admissionsLoaded || !settingsLoaded || !physiciansLoaded) {
     return <PageSkeleton page={currentPage} collapsed={collapsed} />;
   }
@@ -56,7 +90,14 @@ export default function App() {
   const topDiagnoses = getTopDiagnoses();
   const topComplaints = getTopComplaints();
   const monthlyTrend = getMonthlyTrend();
-  const adminInitials = settings.adminName
+  const departmentByName = Object.fromEntries(
+    physicians.map((p) => [p.name, p.department])
+  );
+
+  const displayName = profile?.fullName || settings.adminName;
+  const displayRole =
+    profile?.role === 'admin' ? 'Administrator' : profile?.role === 'staff' ? 'Staff' : settings.adminRole;
+  const adminInitials = displayName
     .replace('Dr. ', '')
     .split(' ')
     .map((n) => n[0])
@@ -64,32 +105,25 @@ export default function App() {
     .slice(0, 2)
     .toUpperCase();
 
+  const handleNavigate = (page: Page) => {
+    if (!isAdmin && page === 'dashboard') return;
+    setCurrentPage(page);
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#f4f7fb]">
       <Sidebar
         currentPage={currentPage}
-        onNavigate={setCurrentPage}
+        onNavigate={handleNavigate}
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
         hospitalName={settings.hospitalName}
         branch={settings.branch}
+        isAdmin={isAdmin}
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-11 bg-white border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20">
-          <div className="flex items-center flex-1 max-w-md">
-            <div className="relative w-full">
-              <Search
-                size={13}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                type="text"
-                placeholder="Search patients, physicians, admissions..."
-                className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30 focus:border-[#1348f3] placeholder:text-slate-400"
-              />
-            </div>
-          </div>
+        <header className="h-11 bg-white border-b border-slate-200 flex items-center justify-end px-3 shrink-0 z-20">
           <div className="flex items-center gap-2.5">
             <button className="relative p-1.5 rounded-md hover:bg-slate-50 text-slate-500">
               <Bell size={15} />
@@ -101,11 +135,19 @@ export default function App() {
               </div>
               <div className="hidden sm:block">
                 <p className="text-[11px] font-semibold text-slate-800 leading-tight">
-                  {settings.adminName}
+                  {displayName}
                 </p>
-                <p className="text-[9px] text-slate-400">{settings.adminRole}</p>
+                <p className="text-[9px] text-slate-400">{displayRole}</p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => signOut()}
+              title="Sign out"
+              className="p-1.5 rounded-md hover:bg-slate-50 text-slate-500 hover:text-red-600"
+            >
+              <LogOut size={15} />
+            </button>
           </div>
         </header>
 
@@ -115,11 +157,12 @@ export default function App() {
           }`}
         >
           <div className="h-full p-3">
-            {currentPage === 'dashboard' && (
+            {currentPage === 'dashboard' && isAdmin && (
               <Dashboard
                 kpis={kpis}
                 mix={mix}
                 physicianStats={physicianStats}
+                departmentByName={departmentByName}
                 topDiagnoses={topDiagnoses}
                 topComplaints={topComplaints}
                 monthlyTrend={monthlyTrend}
@@ -163,6 +206,7 @@ export default function App() {
                 onClearData={clearAllData}
                 onReloadSample={reloadSampleData}
                 admissionCount={admissions.length}
+                isAdmin={isAdmin}
               />
             )}
           </div>

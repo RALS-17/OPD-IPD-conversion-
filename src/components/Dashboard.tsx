@@ -37,6 +37,7 @@ interface DashboardProps {
   };
   mix: MixStats;
   physicianStats: PhysicianStats[];
+  departmentByName?: Record<string, string>;
   topDiagnoses: RankedItem[];
   topComplaints: RankedItem[];
   monthlyTrend: MonthlyTrend;
@@ -49,6 +50,7 @@ export default function Dashboard({
   kpis,
   mix,
   physicianStats,
+  departmentByName = {},
   topDiagnoses,
   topComplaints,
   monthlyTrend,
@@ -100,7 +102,7 @@ export default function Dashboard({
         ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
-            <div key={i} className="bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2 flex items-center gap-2.5">
+            <div key={i} className="bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5 flex items-center gap-2.5 h-[72px]">
               <div className={`w-8 h-8 rounded-md ${kpi.color} flex items-center justify-center shrink-0`}>
                 <Icon size={15} />
               </div>
@@ -156,7 +158,7 @@ export default function Dashboard({
           return (
             <div
               key={i}
-              className="bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2 flex items-center gap-2.5"
+              className="bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5 flex items-center gap-2.5 h-[72px]"
             >
               <div
                 className={`w-8 h-8 rounded-md ${kpi.color} flex items-center justify-center shrink-0`}
@@ -173,12 +175,12 @@ export default function Dashboard({
         })}
       </div>
 
-      {/* Main body: left stack (gauge+chart | top5) + right rankings */}
-      <div className="flex-1 min-h-0 grid grid-cols-3 gap-2.5">
-        {/* LEFT 2/3: gauge+chart on top, top5 below */}
-        <div className="col-span-2 flex flex-col gap-2.5 min-h-0">
-          {/* Gauge + Chart row */}
-          <div className="grid gap-2.5 shrink-0" style={{ height: '48%', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)' }}>
+      {/* Main body: equal-height columns */}
+      <div className="flex-1 min-h-0 grid grid-cols-3 gap-2.5 items-stretch">
+        {/* LEFT 2/3 */}
+        <div className="col-span-2 grid grid-rows-[minmax(0,1fr)_minmax(0,1.05fr)] gap-2.5 min-h-0">
+          {/* Gauge + Chart — same row height, aligned */}
+          <div className="grid gap-2.5 min-h-0" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)' }}>
             {/* Conversion gauge - larger */}
             <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col overflow-hidden">
               <div className="flex items-center justify-between shrink-0">
@@ -310,8 +312,8 @@ export default function Dashboard({
             </div>
           </div>
 
-          {/* Top 5 Physicians - full width of left 2/3 */}
-          <div className="bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
+          {/* Top 5 Physicians */}
+          <div className="bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden min-h-0 flex flex-col h-full">
             <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs">🏆</span>
@@ -322,15 +324,15 @@ export default function Dashboard({
               <span className="text-[9.5px] text-slate-400">Ranked by conversion rate · Today</span>
             </div>
             <div className="overflow-auto flex-1">
-              <table className="w-full text-[11.5px]">
+              <table className="w-full text-[11.5px] table-fixed">
                 <thead className="sticky top-0 bg-slate-50">
                   <tr className="text-left text-slate-500">
-                    <th className="px-3 py-1.5 font-medium text-[10px]">Rank</th>
-                    <th className="px-3 py-1.5 font-medium text-[10px]">Physician</th>
-                    <th className="px-3 py-1.5 font-medium text-[10px]">Department</th>
-                    <th className="px-3 py-1.5 font-medium text-[10px] text-right">OPD Consults</th>
-                    <th className="px-3 py-1.5 font-medium text-[10px] text-right">Admissions</th>
-                    <th className="px-3 py-1.5 font-medium text-[10px] text-right">Conversion Rate</th>
+                    <th className="w-12 px-2 py-1.5 font-medium text-[10px]">Rank</th>
+                    <th className="w-[28%] px-2 py-1.5 font-medium text-[10px]">Physician</th>
+                    <th className="w-[22%] px-2 py-1.5 font-medium text-[10px]">Department</th>
+                    <th className="w-[12%] px-2 py-1.5 font-medium text-[10px] text-right">OPD Consults</th>
+                    <th className="w-[12%] px-2 py-1.5 font-medium text-[10px] text-right">Admissions</th>
+                    <th className="w-[14%] px-2 py-1.5 font-medium text-[10px] text-right">Conversion Rate</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -342,16 +344,10 @@ export default function Dashboard({
                     </tr>
                   ) : (
                     topPhysicians.map((p, idx) => {
-                      const specialties = [
-                        'Orthopedics',
-                        'Internal Medicine',
-                        'General Surgery',
-                        'Obstetrics & Gynecology',
-                        'Pulmonology',
-                      ];
+                      const dept = departmentByName[p.physician] || '—';
                       return (
                         <tr key={p.physician} className="border-b border-slate-50 last:border-0">
-                          <td className="px-3 py-1.5">
+                          <td className="px-2 py-1.5">
                             <span
                               className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold ${
                                 idx === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
@@ -360,9 +356,9 @@ export default function Dashboard({
                               {idx + 1}
                             </span>
                           </td>
-                          <td className="px-3 py-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center text-[8px] font-bold text-blue-700">
+                          <td className="px-2 py-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center text-[8px] font-bold text-blue-700 shrink-0">
                                 {p.physician
                                   .replace('Dr. ', '')
                                   .split(' ')
@@ -370,15 +366,15 @@ export default function Dashboard({
                                   .join('')
                                   .slice(0, 2)}
                               </div>
-                              <span className="font-medium text-slate-800">{p.physician}</span>
+                              <span className="font-medium text-slate-800 truncate">{p.physician}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-1.5 text-slate-500">{specialties[idx] || 'General'}</td>
-                          <td className="px-3 py-1.5 text-right text-slate-600">{p.totalOpdConsults}</td>
-                          <td className="px-3 py-1.5 text-right text-slate-600">
+                          <td className="px-2 py-1.5 text-slate-500 truncate">{dept}</td>
+                          <td className="px-2 py-1.5 text-right text-slate-600 tabular-nums">{p.totalOpdConsults}</td>
+                          <td className="px-2 py-1.5 text-right text-slate-600 tabular-nums">
                             {p.actualAdmissionsFromOpd}
                           </td>
-                          <td className="px-3 py-1.5 text-right">
+                          <td className="px-2 py-1.5 text-right">
                             <span
                               className={`inline-flex items-center gap-0.5 font-semibold ${
                                 p.conversionRate >= goodThreshold
@@ -406,10 +402,10 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* RIGHT 1/3: Top Diagnoses + Top Chief Complaints */}
-        <div className="flex flex-col gap-2.5 min-h-0 overflow-hidden">
+        {/* RIGHT 1/3: equal split diagnoses / complaints */}
+        <div className="grid grid-rows-2 gap-2.5 min-h-0 h-full">
           {/* Top 5 Diagnoses */}
-          <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col min-h-0 overflow-hidden h-full">
             <h3 className="font-semibold text-slate-800 text-[12px] shrink-0 mb-1.5">
               Top 5 Diagnoses
             </h3>
@@ -454,7 +450,7 @@ export default function Dashboard({
           </div>
 
           {/* Top 5 Chief Complaints */}
-          <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col min-h-0 overflow-hidden h-full">
             <h3 className="font-semibold text-slate-800 text-[12px] shrink-0 mb-1.5">
               Top 5 Chief Complaints
             </h3>

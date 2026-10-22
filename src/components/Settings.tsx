@@ -10,6 +10,7 @@ interface SettingsProps {
   onClearData: () => void;
   onReloadSample: () => void;
   admissionCount: number;
+  isAdmin: boolean;
 }
 
 export default function Settings({
@@ -20,6 +21,7 @@ export default function Settings({
   onClearData,
   onReloadSample,
   admissionCount,
+  isAdmin,
 }: SettingsProps) {
   const [message, setMessage] = useState('');
 
@@ -63,6 +65,7 @@ export default function Settings({
                 className={field}
                 value={settings.hospitalName}
                 onChange={(e) => onUpdate({ hospitalName: e.target.value })}
+                maxLength={80}
               />
             </div>
             <div>
@@ -71,6 +74,7 @@ export default function Settings({
                 className={field}
                 value={settings.branch}
                 onChange={(e) => onUpdate({ branch: e.target.value })}
+                maxLength={60}
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -80,6 +84,7 @@ export default function Settings({
                   className={field}
                   value={settings.adminName}
                   onChange={(e) => onUpdate({ adminName: e.target.value })}
+                  maxLength={80}
                 />
               </div>
               <div>
@@ -88,6 +93,7 @@ export default function Settings({
                   className={field}
                   value={settings.adminRole}
                   onChange={(e) => onUpdate({ adminRole: e.target.value })}
+                  maxLength={60}
                 />
               </div>
             </div>
@@ -110,9 +116,10 @@ export default function Settings({
                 step={0.1}
                 className={field}
                 value={settings.targetConversion}
-                onChange={(e) =>
-                  onUpdate({ targetConversion: Number(e.target.value) || 0 })
-                }
+                onChange={(e) => {
+                  const v = Math.min(100, Math.max(0, Number(e.target.value) || 0));
+                  onUpdate({ targetConversion: v });
+                }}
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -124,9 +131,10 @@ export default function Settings({
                   max={100}
                   className={field}
                   value={settings.goodThreshold}
-                  onChange={(e) =>
-                    onUpdate({ goodThreshold: Number(e.target.value) || 0 })
-                  }
+                  onChange={(e) => {
+                    const v = Math.min(100, Math.max(0, Number(e.target.value) || 0));
+                    onUpdate({ goodThreshold: v });
+                  }}
                 />
               </div>
               <div>
@@ -137,9 +145,10 @@ export default function Settings({
                   max={100}
                   className={field}
                   value={settings.averageThreshold}
-                  onChange={(e) =>
-                    onUpdate({ averageThreshold: Number(e.target.value) || 0 })
-                  }
+                  onChange={(e) => {
+                    const v = Math.min(100, Math.max(0, Number(e.target.value) || 0));
+                    onUpdate({ averageThreshold: v });
+                  }}
                 />
               </div>
             </div>
@@ -170,55 +179,66 @@ export default function Settings({
             >
               <Download size={12} /> Export CSV
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (
-                  confirm(
-                    'Reload sample Pinoy demo data? Current log will be replaced (local mode only).'
-                  )
-                ) {
-                  onReloadSample();
-                  showMsg('Sample data loaded');
-                }
-              }}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium bg-white border border-slate-200 rounded-md hover:bg-slate-50"
-            >
-              <RotateCcw size={12} /> Reload sample
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Clear ALL admission records? This cannot be undone.')) {
-                  onClearData();
-                  showMsg('All data cleared');
-                }
-              }}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-red-600 bg-red-50 border border-red-100 rounded-md hover:bg-red-100"
-            >
-              <Trash2 size={12} /> Clear all data
-            </button>
+            {isAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      confirm(
+                        'Reload sample Pinoy demo data? Current log will be replaced (local mode only).'
+                      )
+                    ) {
+                      onReloadSample();
+                      showMsg('Sample data loaded');
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium bg-white border border-slate-200 rounded-md hover:bg-slate-50"
+                >
+                  <RotateCcw size={12} /> Reload sample
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Clear ALL admission records? This cannot be undone.')) {
+                      onClearData();
+                      showMsg('All data cleared');
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-red-600 bg-red-50 border border-red-100 rounded-md hover:bg-red-100"
+                >
+                  <Trash2 size={12} /> Clear all data
+                </button>
+              </>
+            )}
           </div>
+          {!isAdmin && (
+            <p className="text-[10px] text-slate-400 mt-2">
+              Only admins can clear or reload admission data.
+            </p>
+          )}
           <p className="text-[10px] text-slate-400 mt-2">
             Physician roster is managed under the <strong>Physicians</strong> menu (database).
           </p>
         </div>
       </div>
 
-      <div className="shrink-0 flex justify-end">
-        <button
-          type="button"
-          onClick={() => {
-            if (confirm('Reset all settings to defaults?')) {
-              onResetSettings();
-              showMsg('Settings reset to defaults');
-            }
-          }}
-          className="text-[11px] text-slate-500 hover:text-slate-700 underline"
-        >
-          Reset settings to defaults
-        </button>
-      </div>
+      {isAdmin && (
+        <div className="shrink-0 flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('Reset all settings to defaults?')) {
+                onResetSettings();
+                showMsg('Settings reset to defaults');
+              }
+            }}
+            className="text-[11px] text-slate-500 hover:text-slate-700 underline"
+          >
+            Reset settings to defaults
+          </button>
+        </div>
+      )}
     </div>
   );
 }
