@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { LogIn, Eye, EyeOff } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (email: string, password: string) => Promise<{ ok: boolean }>;
