@@ -323,8 +323,9 @@ export function useAdmissions() {
   // Live updates from Supabase (no full page reload)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
+    const client = supabase;
 
-    const channel = supabase
+    const channel = client
       .channel('admissions-live')
       .on(
         'postgres_changes',
@@ -348,7 +349,7 @@ export function useAdmissions() {
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      void client.removeChannel(channel);
     };
   }, []);
 

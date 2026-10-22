@@ -53,7 +53,8 @@ export function usePhysicians() {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
-    const channel = supabase
+    const client = supabase;
+    const channel = client
       .channel('physicians-live')
       .on(
         'postgres_changes',
@@ -64,7 +65,7 @@ export function usePhysicians() {
       )
       .subscribe();
     return () => {
-      void supabase.removeChannel(channel);
+      void client.removeChannel(channel);
     };
   }, [reload]);
 
