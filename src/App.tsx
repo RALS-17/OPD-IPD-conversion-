@@ -5,6 +5,7 @@ import AdmissionLog from './components/AdmissionLog';
 import PhysicianSummary from './components/PhysicianSummary';
 import Physicians from './components/Physicians';
 import Settings from './components/Settings';
+import PageSkeleton from './components/PageSkeleton';
 import { useAdmissions } from './hooks/useAdmissions';
 import { useSettings } from './hooks/useSettings';
 import { usePhysicians } from './hooks/usePhysicians';
@@ -46,14 +47,7 @@ export default function App() {
   } = usePhysicians();
 
   if (!admissionsLoaded || !settingsLoaded || !physiciansLoaded) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f4f7fb]">
-        <div className="text-center">
-          <img src="/logo.svg" alt="Loading" className="w-12 h-12 mx-auto mb-2 animate-pulse" />
-          <p className="text-slate-500 text-sm">Loading Global Care...</p>
-        </div>
-      </div>
-    );
+    return <PageSkeleton page={currentPage} collapsed={collapsed} />;
   }
 
   const kpis = getKpis();
