@@ -12,7 +12,15 @@ import { useSettings } from './hooks/useSettings';
 import { usePhysicians } from './hooks/usePhysicians';
 import { useAuth } from './hooks/useAuth';
 import type { Page } from './types';
-import { Bell, LogOut } from 'lucide-react';
+import {
+  filterByDateRange,
+  filterByPhysician,
+  rangeForPreset,
+  type DatePreset,
+} from './lib/admissionFilters';
+import { LogOut } from 'lucide-react';
+import NotificationBell from './components/NotificationBell';
+import { buildNotifications } from './lib/notifications';
 
 export default function App() {
   const {
@@ -24,17 +32,27 @@ export default function App() {
     signOut,
     isAuthenticated,
     isAdmin,
+    isDoctor,
+    physicianName,
   } = useAuth();
 
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
+  const [datePreset, setDatePreset] = useState<DatePreset>('month');
+  const [dateFrom, setDateFrom] = useState(() => rangeForPreset('month')?.from || '');
+  const [dateTo, setDateTo] = useState(() => rangeForPreset('month')?.to || '');
 
-  // Staff cannot open dashboard
+  // Staff/doctor cannot open dashboard; doctor cannot manage physicians list
   useEffect(() => {
-    if (isAuthenticated && !isAdmin && currentPage === 'dashboard') {
+    if (!isAuthenticated) return;
+    if (!isAdmin && currentPage === 'dashboard') {
       setCurrentPage('admission-log');
     }
-  }, [isAuthenticated, isAdmin, currentPage]);
+    if (isDoctor && currentPage === 'physicians') {
+      setCurrentPage('admission-log');
+    }
+  }, [isAuthenticated, isAdmin, isDoctor, currentPage]);
+
 
   const {
     admissions,
@@ -50,6 +68,7 @@ export default function App() {
     getTopDiagnoses,
     getTopComplaints,
     getMonthlyTrend,
+    setAuditActor,
     loaded: admissionsLoaded,
   } = useAdmissions();
 
@@ -58,6 +77,7 @@ export default function App() {
   const {
     physicians,
     physicianNames,
+    loginLinked,
     addPhysician,
     editPhysician,
     removePhysician,
@@ -65,6 +85,18 @@ export default function App() {
     error: physiciansError,
     usingSupabase,
   } = usePhysicians();
+
+  useEffect(() => {
+    if (profile) {
+      setAuditActor(profile.fullName || '', profile.email || '');
+    }
+  }, [profile, setAuditActor]);
+
+  // Apply light/dark theme (after settings hook is available)
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    document.documentElement.classList.toggle('dark', settings.theme === 'dark');
+  }, [settings.theme, settingsLoaded]);
 
   if (authLoading) {
     return <PageSkeleton page={currentPage} collapsed={collapsed} />;
@@ -84,19 +116,65 @@ export default function App() {
     return <PageSkeleton page={currentPage} collapsed={collapsed} />;
   }
 
-  const kpis = getKpis();
-  const mix = getMix();
-  const physicianStats = getPhysicianStats();
-  const topDiagnoses = getTopDiagnoses();
-  const topComplaints = getTopComplaints();
-  const monthlyTrend = getMonthlyTrend();
   const departmentByName = Object.fromEntries(
     physicians.map((p) => [p.name, p.department])
   );
 
+  const roleScopedAdmissions = filterByPhysician(
+    admissions,
+    isDoctor ? physicianName : null
+  );
+
+  const activeRange =
+    datePreset === 'custom'
+      ? { from: dateFrom || undefined, to: dateTo || undefined }
+      : rangeForPreset(datePreset);
+
+  const filteredAdmissions = filterByDateRange(
+    roleScopedAdmissions,
+    activeRange?.from,
+    activeRange?.to
+  );
+
+  const kpis = getKpis(filteredAdmissions);
+  const mix = getMix(filteredAdmissions);
+  const physicianStats = getPhysicianStats(filteredAdmissions);
+  const topDiagnoses = getTopDiagnoses(filteredAdmissions);
+  const topComplaints = getTopComplaints(filteredAdmissions);
+  const monthlyTrend = getMonthlyTrend(filteredAdmissions);
+
+  const handleExportFiltered = () => {
+    exportCsv(filteredAdmissions);
+  };
+
+  const notifItems = buildNotifications({
+    admissions,
+    targetConversion: settings.targetConversion,
+    goodThreshold: settings.goodThreshold,
+    isAdmin,
+    isDoctor,
+    physicianName,
+  });
+
+  const handleDatePreset = (preset: string) => {
+    const p = preset as DatePreset;
+    setDatePreset(p);
+    if (p !== 'custom') {
+      const r = rangeForPreset(p);
+      setDateFrom(r?.from || '');
+      setDateTo(r?.to || '');
+    }
+  };
+
   const displayName = profile?.fullName || settings.adminName;
   const displayRole =
-    profile?.role === 'admin' ? 'Administrator' : profile?.role === 'staff' ? 'Staff' : settings.adminRole;
+    profile?.role === 'admin'
+      ? 'Administrator'
+      : profile?.role === 'doctor'
+        ? 'Doctor'
+        : profile?.role === 'staff'
+          ? 'Staff'
+          : settings.adminRole;
   const adminInitials = displayName
     .replace('Dr. ', '')
     .split(' ')
@@ -107,11 +185,15 @@ export default function App() {
 
   const handleNavigate = (page: Page) => {
     if (!isAdmin && page === 'dashboard') return;
+    if (isDoctor && page === 'physicians') return;
     setCurrentPage(page);
   };
 
+  // Doctors only see their own admissions (by OPD attending name)
+  const visibleAdmissions = roleScopedAdmissions;
+
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f4f7fb]">
+    <div className="flex h-screen overflow-hidden bg-[#f4f7fb] dark:bg-slate-950">
       <Sidebar
         currentPage={currentPage}
         onNavigate={handleNavigate}
@@ -120,21 +202,19 @@ export default function App() {
         hospitalName={settings.hospitalName}
         branch={settings.branch}
         isAdmin={isAdmin}
+        isDoctor={isDoctor}
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-11 bg-white border-b border-slate-200 flex items-center justify-end px-3 shrink-0 z-20">
+        <header className="h-11 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex items-center justify-end px-3 shrink-0 z-20">
           <div className="flex items-center gap-2.5">
-            <button className="relative p-1.5 rounded-md hover:bg-slate-50 text-slate-500">
-              <Bell size={15} />
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full" />
-            </button>
+            <NotificationBell items={notifItems} />
             <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
               <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[9px] font-bold">
                 {adminInitials}
               </div>
               <div className="hidden sm:block">
-                <p className="text-[11px] font-semibold text-slate-800 leading-tight">
+                <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-100 leading-tight">
                   {displayName}
                 </p>
                 <p className="text-[9px] text-slate-400">{displayRole}</p>
@@ -169,11 +249,19 @@ export default function App() {
                 targetConversion={settings.targetConversion}
                 goodThreshold={settings.goodThreshold}
                 averageThreshold={settings.averageThreshold}
+                datePreset={datePreset}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onDatePreset={handleDatePreset}
+                onDateFrom={setDateFrom}
+                onDateTo={setDateTo}
+                onExport={handleExportFiltered}
+                filteredCount={filteredAdmissions.length}
               />
             )}
             {currentPage === 'admission-log' && (
               <AdmissionLog
-                admissions={admissions}
+                admissions={visibleAdmissions}
                 onAdd={addAdmission}
                 onUpdate={updateAdmission}
                 onDelete={deleteAdmission}
@@ -182,19 +270,21 @@ export default function App() {
             )}
             {currentPage === 'physician-summary' && (
               <PhysicianSummary
-                stats={physicianStats}
+                stats={getPhysicianStats(roleScopedAdmissions)}
                 goodThreshold={settings.goodThreshold}
                 averageThreshold={settings.averageThreshold}
               />
             )}
-            {currentPage === 'physicians' && (
+            {currentPage === 'physicians' && !isDoctor && (
               <Physicians
                 physicians={physicians}
+                loginLinked={loginLinked}
                 onAdd={addPhysician}
                 onEdit={editPhysician}
                 onDelete={removePhysician}
                 usingSupabase={usingSupabase}
                 error={physiciansError}
+                canManageAccounts={isAdmin}
               />
             )}
             {currentPage === 'settings' && (
@@ -202,7 +292,7 @@ export default function App() {
                 settings={settings}
                 onUpdate={updateSettings}
                 onResetSettings={resetSettings}
-                onExportCsv={exportCsv}
+                onExportCsv={() => exportCsv(roleScopedAdmissions)}
                 onClearData={clearAllData}
                 onReloadSample={reloadSampleData}
                 admissionCount={admissions.length}

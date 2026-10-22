@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Building2, Target, Database, Trash2, Download, RotateCcw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Building2, Target, Database, Trash2, Download, RotateCcw, Sun, Moon, ScrollText } from 'lucide-react';
+import { fetchAuditLogs, type AuditEntry } from '../lib/auditLog';
 import type { AppSettings } from '../types';
 
 interface SettingsProps {
@@ -24,6 +25,16 @@ export default function Settings({
   isAdmin,
 }: SettingsProps) {
   const [message, setMessage] = useState('');
+  const [auditRows, setAuditRows] = useState<AuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    setAuditLoading(true);
+    fetchAuditLogs(80)
+      .then(setAuditRows)
+      .finally(() => setAuditLoading(false));
+  }, [isAdmin, admissionCount]);
 
   const showMsg = (text: string) => {
     setMessage(text);
@@ -159,6 +170,48 @@ export default function Settings({
           </div>
         </div>
 
+
+        {/* Appearance */}
+        <div className={`${card} p-3 lg:col-span-2`}>
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <Sun size={14} className="text-amber-500" />
+            <h2 className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-100">Appearance</h2>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
+            Choose light or dark theme for the whole system.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onUpdate({ theme: 'light' });
+                showMsg('Light theme applied');
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md border ${
+                settings.theme === 'light' || !settings.theme
+                  ? 'bg-[#1348f3] text-white border-[#1348f3]'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600'
+              }`}
+            >
+              <Sun size={12} /> Light
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onUpdate({ theme: 'dark' });
+                showMsg('Dark theme applied');
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md border ${
+                settings.theme === 'dark'
+                  ? 'bg-[#1348f3] text-white border-[#1348f3]'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600'
+              }`}
+            >
+              <Moon size={12} /> Dark
+            </button>
+          </div>
+        </div>
+
         {/* Data Tools */}
         <div className={`${card} p-3 lg:col-span-2`}>
           <div className="flex items-center gap-1.5 mb-2.5">
@@ -222,6 +275,61 @@ export default function Settings({
           </p>
         </div>
       </div>
+
+
+      {isAdmin && (
+        <div className={`${card} p-3`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <ScrollText size={14} className="text-slate-600" />
+              <h2 className="text-[12.5px] font-semibold text-slate-800">Audit log</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAuditLoading(true);
+                fetchAuditLogs(80).then(setAuditRows).finally(() => setAuditLoading(false));
+              }}
+              className="text-[10px] text-[#1348f3] font-medium hover:underline"
+            >
+              Refresh
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-400 mb-2">
+            Recent create / update / delete / export actions.
+          </p>
+          <div className="max-h-48 overflow-auto border border-slate-100 rounded-md">
+            {auditLoading ? (
+              <p className="text-[11px] text-slate-400 p-3">Loading…</p>
+            ) : auditRows.length === 0 ? (
+              <p className="text-[11px] text-slate-400 p-3">No audit entries yet</p>
+            ) : (
+              <table className="w-full text-[10.5px]">
+                <thead className="sticky top-0 bg-slate-50">
+                  <tr className="text-left text-slate-500">
+                    <th className="px-2 py-1">When</th>
+                    <th className="px-2 py-1">Action</th>
+                    <th className="px-2 py-1">Who</th>
+                    <th className="px-2 py-1">Summary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditRows.map((r) => (
+                    <tr key={r.id} className="border-t border-slate-50">
+                      <td className="px-2 py-1 text-slate-500 whitespace-nowrap">
+                        {new Date(r.createdAt).toLocaleString()}
+                      </td>
+                      <td className="px-2 py-1 font-semibold uppercase text-slate-700">{r.action}</td>
+                      <td className="px-2 py-1 text-slate-600">{r.actorName || r.actorEmail || '—'}</td>
+                      <td className="px-2 py-1 text-slate-600">{r.summary}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {isAdmin && (
         <div className="shrink-0 flex justify-end">

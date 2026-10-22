@@ -4,7 +4,7 @@ export type HhoCash = 'HHO' | 'CASH';
 export type YesNo = 'Yes' | 'No';
 export type PatientType = 'Private' | 'Walk-in';
 
-export type UserRole = 'admin' | 'staff';
+export type UserRole = 'admin' | 'staff' | 'doctor';
 
 export interface Admission {
   id: string;
@@ -57,6 +57,8 @@ export type Page =
 
 export type KpiMode = 'demo' | 'live';
 
+export type ThemeMode = 'light' | 'dark';
+
 export interface AppSettings {
   hospitalName: string;
   branch: string;
@@ -66,6 +68,7 @@ export interface AppSettings {
   goodThreshold: number;
   averageThreshold: number;
   kpiMode: KpiMode;
+  theme: ThemeMode;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -77,6 +80,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   goodThreshold: 30,
   averageThreshold: 15,
   kpiMode: 'live',
+  theme: 'light',
 };
 
 export const DEPARTMENTS = [

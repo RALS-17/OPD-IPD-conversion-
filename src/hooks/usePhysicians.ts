@@ -3,26 +3,40 @@ import type { Physician } from '../types';
 import {
   isSupabaseConfigured,
   fetchPhysicians,
+  fetchPhysicianLoginMap,
   insertPhysician,
   updatePhysician,
   deletePhysician,
+  createDoctorLoginAccount,
+  linkExistingUserToPhysician,
 } from '../lib/physiciansApi';
+import { supabase } from '../lib/supabase';
+
+export type DoctorAccountAction =
+  | { mode: 'create'; email: string; password: string }
+  | { mode: 'link'; email: string };
 
 export function usePhysicians() {
   const [physicians, setPhysicians] = useState<Physician[]>([]);
+  const [loginLinked, setLoginLinked] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setPhysicians([]);
+      setLoginLinked({});
       setLoaded(true);
       setError(null);
       return;
     }
     try {
-      const rows = await fetchPhysicians();
+      const [rows, links] = await Promise.all([
+        fetchPhysicians(),
+        fetchPhysicianLoginMap(),
+      ]);
       setPhysicians(rows);
+      setLoginLinked(links);
       setError(null);
     } catch (e) {
       console.error(e);
@@ -37,8 +51,52 @@ export function usePhysicians() {
     reload();
   }, [reload]);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const channel = supabase
+      .channel('physicians-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'physicians' },
+        () => {
+          void reload();
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [reload]);
+
+  const applyAccount = async (
+    physicianId: string,
+    physicianName: string,
+    account?: DoctorAccountAction | null
+  ) => {
+    if (!account) return;
+    if (account.mode === 'create') {
+      await createDoctorLoginAccount({
+        physicianId,
+        physicianName,
+        email: account.email,
+        password: account.password,
+      });
+    } else {
+      await linkExistingUserToPhysician({
+        physicianId,
+        physicianName,
+        email: account.email,
+      });
+    }
+    setLoginLinked((prev) => ({ ...prev, [physicianId]: 'linked' }));
+  };
+
   const addPhysician = useCallback(
-    async (name: string, department: string) => {
+    async (
+      name: string,
+      department: string,
+      account?: DoctorAccountAction | null
+    ) => {
       if (!isSupabaseConfigured) {
         alert('Connect Supabase first (set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY).');
         return;
@@ -48,16 +106,22 @@ export function usePhysicians() {
         setPhysicians((prev) =>
           [...prev, row].sort((a, b) => a.name.localeCompare(b.name))
         );
+        await applyAccount(row.id, row.name, account);
       } catch (e) {
         console.error(e);
-        alert('Failed to add physician. Check Supabase.');
+        alert(e instanceof Error ? e.message : 'Failed to add physician.');
       }
     },
     []
   );
 
   const editPhysician = useCallback(
-    async (id: string, name: string, department: string) => {
+    async (
+      id: string,
+      name: string,
+      department: string,
+      account?: DoctorAccountAction | null
+    ) => {
       if (!isSupabaseConfigured) return;
       try {
         await updatePhysician(id, { name, department });
@@ -66,9 +130,10 @@ export function usePhysicians() {
             .map((p) => (p.id === id ? { ...p, name, department } : p))
             .sort((a, b) => a.name.localeCompare(b.name))
         );
+        await applyAccount(id, name, account);
       } catch (e) {
         console.error(e);
-        alert('Failed to update physician.');
+        alert(e instanceof Error ? e.message : 'Failed to update physician.');
       }
     },
     []
@@ -79,6 +144,11 @@ export function usePhysicians() {
     try {
       await deletePhysician(id);
       setPhysicians((prev) => prev.filter((p) => p.id !== id));
+      setLoginLinked((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     } catch (e) {
       console.error(e);
       alert('Failed to delete physician.');
@@ -90,6 +160,7 @@ export function usePhysicians() {
   return {
     physicians,
     physicianNames,
+    loginLinked,
     addPhysician,
     editPhysician,
     removePhysician,

@@ -8,6 +8,14 @@ export interface AuthProfile {
   fullName: string;
   role: UserRole;
   email: string;
+  physicianId: string | null;
+  physicianName: string | null;
+}
+
+function parseRole(raw: unknown): UserRole {
+  if (raw === 'admin') return 'admin';
+  if (raw === 'doctor') return 'doctor';
+  return 'staff';
 }
 
 export function useAuth() {
@@ -24,42 +32,62 @@ export function useAuth() {
         fullName: u.email?.split('@')[0] || 'User',
         role: 'admin',
         email: u.email || '',
+        physicianId: null,
+        physicianName: null,
       });
       return;
     }
+
     const { data, error: qErr } = await supabase
       .from('profiles')
-      .select('id, full_name, role')
+      .select('id, full_name, role, physician_id, physicians(name)')
       .eq('id', u.id)
       .maybeSingle();
 
     if (qErr) {
       console.error(qErr);
+      // Fallback without join
+      const { data: plain } = await supabase
+        .from('profiles')
+        .select('id, full_name, role, physician_id')
+        .eq('id', u.id)
+        .maybeSingle();
+
       setProfile({
         id: u.id,
-        fullName: u.email?.split('@')[0] || 'User',
-        role: 'staff',
+        fullName: (plain?.full_name as string) || u.email?.split('@')[0] || 'User',
+        role: parseRole(plain?.role),
         email: u.email || '',
+        physicianId: (plain?.physician_id as string) || null,
+        physicianName: null,
       });
       return;
     }
 
     if (!data) {
-      // Profile missing — treat as staff until admin sets role
       setProfile({
         id: u.id,
         fullName: u.email?.split('@')[0] || 'User',
         role: 'staff',
         email: u.email || '',
+        physicianId: null,
+        physicianName: null,
       });
       return;
     }
 
+    const phy = data.physicians as { name?: string } | { name?: string }[] | null;
+    let physicianName: string | null = null;
+    if (Array.isArray(phy)) physicianName = phy[0]?.name ?? null;
+    else if (phy && typeof phy === 'object') physicianName = phy.name ?? null;
+
     setProfile({
       id: data.id as string,
       fullName: (data.full_name as string) || u.email?.split('@')[0] || 'User',
-      role: data.role === 'admin' ? 'admin' : 'staff',
+      role: parseRole(data.role),
       email: u.email || '',
+      physicianId: (data.physician_id as string) || null,
+      physicianName,
     });
   }, []);
 
@@ -85,15 +113,23 @@ export function useAuth() {
       }
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
+      // Ignore token refresh / tab focus — prevents full-page skeleton reload
+      if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        setSession(next);
+        setUser(next?.user ?? null);
+        return;
+      }
       setSession(next);
       setUser(next?.user ?? null);
-      if (next?.user) {
-        setLoading(true);
-        loadProfile(next.user).finally(() => setLoading(false));
-      } else {
+      if (event === 'SIGNED_OUT' || !next?.user) {
         setProfile(null);
         setLoading(false);
+        return;
+      }
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        // Soft profile refresh — do not toggle global loading (avoids remount)
+        loadProfile(next.user);
       }
     });
 
@@ -128,6 +164,11 @@ export function useAuth() {
     setUser(null);
   }, []);
 
+  const role = profile?.role;
+  const isAdmin = role === 'admin';
+  const isStaff = role === 'staff';
+  const isDoctor = role === 'doctor';
+
   return {
     session,
     user,
@@ -138,8 +179,10 @@ export function useAuth() {
     signIn,
     signOut,
     isAuthenticated: Boolean(session && user),
-    isAdmin: profile?.role === 'admin',
-    isStaff: profile?.role === 'staff',
+    isAdmin,
+    isStaff,
+    isDoctor,
+    physicianName: profile?.physicianName ?? null,
     usingSupabase: isSupabaseConfigured,
   };
 }

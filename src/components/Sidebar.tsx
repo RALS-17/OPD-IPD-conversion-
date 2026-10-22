@@ -17,6 +17,7 @@ interface SidebarProps {
   hospitalName: string;
   branch: string;
   isAdmin: boolean;
+  isDoctor?: boolean;
 }
 
 const mainNav: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
@@ -34,6 +35,7 @@ export default function Sidebar({
   hospitalName,
   branch,
   isAdmin,
+  isDoctor = false,
 }: SidebarProps) {
   const navBtn = (id: Page, label: string, Icon: typeof LayoutDashboard) => {
     const isActive = currentPage === id;
@@ -46,8 +48,8 @@ export default function Sidebar({
           collapsed ? 'justify-center px-0 py-2.5' : 'px-2.5 py-2'
         } ${
           isActive
-            ? 'bg-[#e8f8f0] text-[#0d9f6e]'
-            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            ? 'bg-[#e8f8f0] text-[#0d9f6e] dark:bg-emerald-950 dark:text-emerald-400'
+            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
         }`}
       >
         <Icon
@@ -62,12 +64,12 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`bg-white border-r border-slate-100 flex flex-col h-screen transition-all duration-300 ease-in-out shrink-0 ${
+      className={`bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-700 flex flex-col h-screen transition-all duration-300 ease-in-out shrink-0 ${
         collapsed ? 'w-[64px]' : 'w-[220px]'
       }`}
     >
       <div
-        className={`flex items-center border-b border-slate-50 ${
+        className={`flex items-center border-b border-slate-50 dark:border-slate-800 ${
           collapsed ? 'px-2 py-3 justify-center' : 'px-3.5 py-3.5 gap-2.5'
         }`}
       >
@@ -75,7 +77,7 @@ export default function Sidebar({
           <>
             <img src="/logo.svg" alt="Logo" className="w-9 h-9 object-contain shrink-0" />
             <div className="min-w-0 flex-1">
-              <h1 className="text-[13.5px] font-bold text-slate-900 leading-tight underline decoration-[#1348f3] decoration-2 underline-offset-[3px] truncate">
+              <h1 className="text-[13.5px] font-bold text-slate-900 dark:text-slate-100 leading-tight underline decoration-[#1348f3] decoration-2 underline-offset-[3px] truncate">
                 {hospitalName}
               </h1>
               <p className="text-[9.5px] text-slate-500 mt-0.5 font-medium tracking-wide truncate">
@@ -99,7 +101,11 @@ export default function Sidebar({
 
       <nav className={`flex-1 py-3 space-y-0.5 ${collapsed ? 'px-1.5' : 'px-2.5'}`}>
         {mainNav
-          .filter((item) => isAdmin || item.id !== 'dashboard')
+          .filter((item) => {
+            if (item.id === 'dashboard' && !isAdmin) return false;
+            if (item.id === 'physicians' && isDoctor) return false;
+            return true;
+          })
           .map((item) => navBtn(item.id, item.label, item.icon))}
       </nav>
 
@@ -108,7 +114,7 @@ export default function Sidebar({
         {navBtn('settings', 'Settings', Settings)}
       </div>
 
-      <div className={`border-t border-slate-100 ${collapsed ? 'px-1.5 py-3' : 'px-3.5 py-3'}`}>
+      <div className={`border-t border-slate-100 dark:border-slate-800 ${collapsed ? 'px-1.5 py-3' : 'px-3.5 py-3'}`}>
         {!collapsed ? (
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-[10px] text-slate-400">

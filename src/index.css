@@ -6,6 +6,9 @@
   body {
     @apply bg-[#f4f7fb] text-slate-800 font-sans antialiased;
   }
+  html.dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
 }
 
 @layer components {
@@ -27,4 +30,38 @@
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
   }
+}
+
+/* Dark mode surfaces for existing white cards */
+html.dark .bg-white {
+  background-color: rgb(15 23 42) !important; /* slate-900 */
+}
+html.dark .bg-\[\#f4f7fb\],
+html.dark .bg-\[\#f4f7fb\] {
+  background-color: rgb(2 6 23) !important;
+}
+html.dark .border-slate-100,
+html.dark .border-slate-200 {
+  border-color: rgb(51 65 85) !important; /* slate-600 */
+}
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: rgb(241 245 249) !important; /* slate-100 */
+}
+html.dark .text-slate-600,
+html.dark .text-slate-500 {
+  color: rgb(148 163 184) !important;
+}
+html.dark .bg-slate-50 {
+  background-color: rgb(30 41 59) !important;
+}
+html.dark .bg-slate-50\/80 {
+  background-color: rgb(30 41 59) !important;
+}
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: rgb(30 41 59);
+  border-color: rgb(51 65 85);
+  color: rgb(241 245 249);
 }

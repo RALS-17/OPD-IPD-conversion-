@@ -44,6 +44,14 @@ interface DashboardProps {
   targetConversion: number;
   goodThreshold: number;
   averageThreshold: number;
+  datePreset: string;
+  dateFrom: string;
+  dateTo: string;
+  onDatePreset: (preset: string) => void;
+  onDateFrom: (v: string) => void;
+  onDateTo: (v: string) => void;
+  onExport: () => void;
+  filteredCount: number;
 }
 
 export default function Dashboard({
@@ -57,6 +65,14 @@ export default function Dashboard({
   targetConversion,
   goodThreshold,
   averageThreshold,
+  datePreset,
+  dateFrom,
+  dateTo,
+  onDatePreset,
+  onDateFrom,
+  onDateTo,
+  onExport,
+  filteredCount,
 }: DashboardProps) {
   const topPhysicians = physicianStats.slice(0, 5);
 
@@ -92,6 +108,50 @@ export default function Dashboard({
 
   return (
     <div className="flex flex-col gap-2.5 h-full overflow-hidden">
+      {/* Date range + export */}
+      <div className="shrink-0 flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(['today', 'week', 'month', 'all', 'custom'] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onDatePreset(p)}
+              className={`px-2 py-1 text-[10px] font-semibold rounded-md border ${
+                datePreset === p
+                  ? 'bg-[#1348f3] text-white border-[#1348f3]'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {p === 'today' ? 'Today' : p === 'week' ? '7 days' : p === 'month' ? 'This month' : p === 'all' ? 'All' : 'Custom'}
+            </button>
+          ))}
+          {datePreset === 'custom' && (
+            <>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => onDateFrom(e.target.value)}
+                className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1"
+              />
+              <span className="text-[10px] text-slate-400">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => onDateTo(e.target.value)}
+                className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1"
+              />
+            </>
+          )}
+          <span className="text-[10px] text-slate-400 ml-1">{filteredCount} records</span>
+        </div>
+        <button
+          type="button"
+          onClick={onExport}
+          className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-white bg-[#0d9f6e] rounded-md hover:bg-emerald-700"
+        >
+          Export filtered CSV
+        </button>
+      </div>
       {/* KPI row - main metrics */}
       <div className="grid grid-cols-4 gap-2.5 shrink-0">
         {[

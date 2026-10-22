@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Admission, PhysicianStats, RankedItem, PatientType } from '../types';
 import {
   isSupabaseConfigured,
@@ -6,7 +6,10 @@ import {
   insertAdmission,
   updateAdmissionRow,
   deleteAdmissionRow,
+  fromRow,
 } from '../lib/admissionsApi';
+import { supabase } from '../lib/supabase';
+import { writeAudit } from '../lib/auditLog';
 
 const STORAGE_KEY = 'globalcare_admissions_v3';
 
@@ -259,6 +262,10 @@ function rankField(
 export function useAdmissions() {
   const [admissions, setAdmissions] = useState<Admission[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const auditActorRef = useRef({ name: '', email: '' });
+  const setAuditActor = useCallback((name: string, email: string) => {
+    auditActorRef.current = { name, email };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -313,11 +320,51 @@ export function useAdmissions() {
     }
   }, [admissions, loaded]);
 
+  // Live updates from Supabase (no full page reload)
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const channel = supabase
+      .channel('admissions-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'admissions' },
+        (payload) => {
+          if (payload.eventType === 'INSERT' && payload.new) {
+            const row = normalizeAdmission(fromRow(payload.new as Record<string, unknown>));
+            setAdmissions((prev) => {
+              if (prev.some((a) => a.id === row.id)) return prev;
+              return [row, ...prev];
+            });
+          } else if (payload.eventType === 'UPDATE' && payload.new) {
+            const row = normalizeAdmission(fromRow(payload.new as Record<string, unknown>));
+            setAdmissions((prev) => prev.map((a) => (a.id === row.id ? row : a)));
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            const id = String((payload.old as { id?: string }).id || '');
+            if (id) setAdmissions((prev) => prev.filter((a) => a.id !== id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
+
   const addAdmission = useCallback(async (data: Omit<Admission, 'id' | 'createdAt'>) => {
     if (isSupabaseConfigured) {
       try {
         const row = await insertAdmission(data);
         setAdmissions((prev) => [normalizeAdmission(row), ...prev]);
+        void writeAudit({
+          action: 'create',
+          entityId: row.id,
+          summary: `Added admission: ${data.patientName || 'patient'}`,
+          actorName: auditActorRef.current.name,
+          actorEmail: auditActorRef.current.email,
+        });
         return;
       } catch (err) {
         console.error('Supabase insert failed', err);
@@ -332,6 +379,13 @@ export function useAdmissions() {
       createdAt: new Date().toISOString(),
     };
     setAdmissions((prev) => [newAdmission, ...prev]);
+    void writeAudit({
+      action: 'create',
+      entityId: newAdmission.id,
+      summary: `Added admission: ${data.patientName || 'patient'}`,
+      actorName: auditActorRef.current.name,
+      actorEmail: auditActorRef.current.email,
+    });
   }, []);
 
   const updateAdmission = useCallback(async (id: string, data: Partial<Admission>) => {
@@ -347,6 +401,13 @@ export function useAdmissions() {
     setAdmissions((prev) =>
       prev.map((a) => (a.id === id ? { ...a, ...data } : a))
     );
+    void writeAudit({
+      action: 'update',
+      entityId: id,
+      summary: `Updated admission ${id.slice(0, 8)}…`,
+      actorName: auditActorRef.current.name,
+      actorEmail: auditActorRef.current.email,
+    });
   }, []);
 
   const deleteAdmission = useCallback(async (id: string) => {
@@ -360,6 +421,13 @@ export function useAdmissions() {
       }
     }
     setAdmissions((prev) => prev.filter((a) => a.id !== id));
+    void writeAudit({
+      action: 'delete',
+      entityId: id,
+      summary: `Deleted admission ${id.slice(0, 8)}…`,
+      actorName: auditActorRef.current.name,
+      actorEmail: auditActorRef.current.email,
+    });
   }, []);
 
   const clearAllData = useCallback(async () => {
@@ -378,20 +446,22 @@ export function useAdmissions() {
     setAdmissions(SAMPLE_ADMISSIONS);
   }, []);
 
-  const getLiveKpis = useCallback(() => {
-    const totalOpd = admissions.length;
-    const advised = admissions.filter((a) => a.advisedForAdmission === 'Yes').length;
-    const actual = admissions.filter((a) => a.actuallyAdmitted === 'Yes').length;
+  const computeKpis = useCallback((list: Admission[]) => {
+    const totalOpd = list.length;
+    const advised = list.filter((a) => a.advisedForAdmission === 'Yes').length;
+    const actual = list.filter((a) => a.actuallyAdmitted === 'Yes').length;
     const conversion =
       totalOpd > 0 ? Math.round((actual / totalOpd) * 1000) / 10 : 0;
     return { totalOpd, advised, actual, conversion };
-  }, [admissions]);
+  }, []);
 
-  const getLivePhysicianStats = useCallback((): PhysicianStats[] => {
+  const getLiveKpis = useCallback(() => computeKpis(admissions), [admissions, computeKpis]);
+
+  const computePhysicianStats = useCallback((list: Admission[]): PhysicianStats[] => {
     // Conversion rate is based ONLY on OPD Attending Physician (not Admitting Physician)
     const map = new Map<string, PhysicianStats>();
 
-    admissions.forEach((a) => {
+    list.forEach((a) => {
       const name = (a.opdAttendingPhysician || '').trim();
       if (!name) return;
 
@@ -424,14 +494,18 @@ export function useAdmissions() {
             : 0,
       }))
       .sort((a, b) => b.conversionRate - a.conversionRate);
-  }, [admissions]);
+  }, []);
 
+  const getLivePhysicianStats = useCallback(
+    () => computePhysicianStats(admissions),
+    [admissions, computePhysicianStats]
+  );
 
-  const getLiveMix = useCallback(() => {
-    const hmo = admissions.filter((a) => a.hhoCash === 'HHO').length;
-    const cash = admissions.filter((a) => a.hhoCash === 'CASH').length;
-    const walkIn = admissions.filter((a) => a.patientType === 'Walk-in').length;
-    const privateCount = admissions.filter((a) => a.patientType === 'Private').length;
+  const computeMix = useCallback((list: Admission[]) => {
+    const hmo = list.filter((a) => a.hhoCash === 'HHO').length;
+    const cash = list.filter((a) => a.hhoCash === 'CASH').length;
+    const walkIn = list.filter((a) => a.patientType === 'Walk-in').length;
+    const privateCount = list.filter((a) => a.patientType === 'Private').length;
     const payTotal = hmo + cash || 1;
     return {
       hmo,
@@ -441,20 +515,38 @@ export function useAdmissions() {
       hmoPct: Math.round((hmo / payTotal) * 1000) / 10,
       cashPct: Math.round((cash / payTotal) * 1000) / 10,
     };
-  }, [admissions]);
+  }, []);
 
-  const getKpis = useCallback(() => getLiveKpis(), [getLiveKpis]);
+  const getLiveMix = useCallback(() => computeMix(admissions), [admissions, computeMix]);
 
-  const getPhysicianStats = useCallback(() => getLivePhysicianStats(), [getLivePhysicianStats]);
+  const getKpis = useCallback(
+    (list?: Admission[]) => (list ? computeKpis(list) : getLiveKpis()),
+    [computeKpis, getLiveKpis]
+  );
 
-  const getMix = useCallback(() => getLiveMix(), [getLiveMix]);
+  const getPhysicianStats = useCallback(
+    (list?: Admission[]) => (list ? computePhysicianStats(list) : getLivePhysicianStats()),
+    [computePhysicianStats, getLivePhysicianStats]
+  );
 
-  const getTopDiagnoses = useCallback((): RankedItem[] => rankField(admissions, 'diagnosis', 5), [admissions]);
+  const getMix = useCallback(
+    (list?: Admission[]) => (list ? computeMix(list) : getLiveMix()),
+    [computeMix, getLiveMix]
+  );
 
-  const getTopComplaints = useCallback((): RankedItem[] => rankField(admissions, 'chiefComplaint', 5), [admissions]);
+  const getTopDiagnoses = useCallback(
+    (list?: Admission[]): RankedItem[] => rankField(list ?? admissions, 'diagnosis', 5),
+    [admissions]
+  );
+
+  const getTopComplaints = useCallback(
+    (list?: Admission[]): RankedItem[] => rankField(list ?? admissions, 'chiefComplaint', 5),
+    [admissions]
+  );
 
 
-  const getMonthlyTrend = useCallback(() => {
+  const getMonthlyTrend = useCallback((list?: Admission[]) => {
+    const source = list ?? admissions;
     // Group by day of current calendar month from dateOfAdmission
     const now = new Date();
     const year = now.getFullYear();
@@ -464,7 +556,7 @@ export function useAdmissions() {
     const byDay: Record<number, { total: number; admitted: number }> = {};
     for (let d = 1; d <= daysInMonth; d++) byDay[d] = { total: 0, admitted: 0 };
 
-    admissions.forEach((a) => {
+    source.forEach((a) => {
       if (!a.dateOfAdmission) return;
       const dt = new Date(a.dateOfAdmission + 'T00:00:00');
       if (dt.getFullYear() !== year || dt.getMonth() !== month) return;
@@ -487,7 +579,8 @@ export function useAdmissions() {
     return { daysInMonth, points, year, month: month + 1 };
   }, [admissions]);
 
-  const exportCsv = useCallback(() => {
+  const exportCsv = useCallback((list?: Admission[]) => {
+    const source = list ?? admissions;
     const headers = [
       'Patient Name',
       'Address',
@@ -504,7 +597,7 @@ export function useAdmissions() {
       'Admitting Physician',
       'Remarks',
     ];
-    const rows = admissions.map((a) =>
+    const rows = source.map((a) =>
       [
         a.patientName,
         a.address,
@@ -532,6 +625,12 @@ export function useAdmissions() {
     link.download = `globalcare-admissions-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+    void writeAudit({
+      action: 'export',
+      summary: `Exported ${source.length} admission row(s) to CSV`,
+      actorName: auditActorRef.current.name,
+      actorEmail: auditActorRef.current.email,
+    });
   }, [admissions]);
 
   return {
@@ -548,6 +647,7 @@ export function useAdmissions() {
     getTopDiagnoses,
     getTopComplaints,
     getMonthlyTrend,
+    setAuditActor,
     loaded,
     usingSupabase: isSupabaseConfigured,
   };
