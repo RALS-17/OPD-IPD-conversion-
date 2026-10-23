@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import AdmissionLog from './components/AdmissionLog';
@@ -41,17 +41,31 @@ export default function App() {
   const [datePreset, setDatePreset] = useState<DatePreset>('month');
   const [dateFrom, setDateFrom] = useState(() => rangeForPreset('month')?.from || '');
   const [dateTo, setDateTo] = useState(() => rangeForPreset('month')?.to || '');
+  const defaultPageSet = useRef(false);
 
-  // Staff/doctor cannot open dashboard; doctor cannot manage physicians list
+  // Set default page once profile is known (admin → Dashboard)
   useEffect(() => {
-    if (!isAuthenticated) return;
-    if (!isAdmin && currentPage === 'dashboard') {
+    if (!isAuthenticated) {
+      defaultPageSet.current = false;
+      return;
+    }
+    if (!profile) return;
+    if (!defaultPageSet.current) {
+      defaultPageSet.current = true;
+      setCurrentPage(profile.role === 'admin' ? 'dashboard' : 'admission-log');
+    }
+  }, [isAuthenticated, profile]);
+
+  // Guard restricted pages only after role is known
+  useEffect(() => {
+    if (!isAuthenticated || !profile) return;
+    if (profile.role !== 'admin' && currentPage === 'dashboard') {
       setCurrentPage('admission-log');
     }
-    if (isDoctor && currentPage === 'physicians') {
+    if (profile.role === 'doctor' && currentPage === 'physicians') {
       setCurrentPage('admission-log');
     }
-  }, [isAuthenticated, isAdmin, isDoctor, currentPage]);
+  }, [isAuthenticated, profile, currentPage]);
 
 
   const {
