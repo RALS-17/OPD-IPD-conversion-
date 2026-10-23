@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import {
   Users,
   ClipboardCheck,
@@ -10,7 +11,7 @@ import {
   UserRound,
   Footprints,
 } from 'lucide-react';
-import type { PhysicianStats, RankedItem } from '../types';
+import type { Admission, PhysicianStats, RankedItem, SourceOfAdmission } from '../types';
 
 interface MixStats {
   hmo: number;
@@ -27,6 +28,8 @@ interface MonthlyTrend {
   year: number;
   month: number;
 }
+
+type GaugeSource = 'OPD' | 'ER';
 
 interface DashboardProps {
   kpis: {
@@ -52,6 +55,57 @@ interface DashboardProps {
   onDateTo: (v: string) => void;
   onExport: () => void;
   filteredCount: number;
+  /** Date-filtered admissions used for the conversion gauge (source filter applied inside). */
+  filteredAdmissions: Admission[];
+}
+
+function dateFilterLabel(
+  preset: string,
+  dateFrom: string,
+  dateTo: string
+): string {
+  switch (preset) {
+    case 'today':
+      return 'Today';
+    case 'week':
+      return 'Last 7 days';
+    case 'month':
+      return 'This month';
+    case 'all':
+      return 'All time';
+    case 'custom':
+      if (dateFrom && dateTo) return `${dateFrom} – ${dateTo}`;
+      if (dateFrom) return `From ${dateFrom}`;
+      if (dateTo) return `Until ${dateTo}`;
+      return 'Custom range';
+    default:
+      return 'Selected period';
+  }
+}
+
+function niceMax(peak: number): number {
+  if (peak <= 0) return 10;
+  // Pad ~15% above peak, then snap to a readable step
+  const padded = peak * 1.15;
+  if (padded <= 10) return 10;
+  if (padded <= 20) return 20;
+  if (padded <= 25) return 25;
+  if (padded <= 40) return 40;
+  if (padded <= 50) return 50;
+  if (padded <= 60) return 60;
+  if (padded <= 75) return 75;
+  if (padded <= 100) return 100;
+  return Math.ceil(padded / 10) * 10;
+}
+
+function buildYTicks(maxY: number): number[] {
+  const steps = 5;
+  const step = maxY / steps;
+  const ticks: number[] = [];
+  for (let i = 0; i <= steps; i++) {
+    ticks.push(Math.round(step * i * 10) / 10);
+  }
+  return ticks;
 }
 
 export default function Dashboard({
@@ -73,8 +127,24 @@ export default function Dashboard({
   onDateTo,
   onExport,
   filteredCount,
+  filteredAdmissions,
 }: DashboardProps) {
   const topPhysicians = physicianStats.slice(0, 5);
+  const periodLabel = dateFilterLabel(datePreset, dateFrom, dateTo);
+
+  // Gauge source mode: OPD → IPD (default) or ER → IPD
+  const [gaugeSource, setGaugeSource] = useState<GaugeSource>('OPD');
+
+  const gaugeStats = useMemo(() => {
+    const list = filteredAdmissions.filter(
+      (a) => a.source === (gaugeSource as SourceOfAdmission)
+    );
+    const total = list.length;
+    const admitted = list.filter((a) => a.actuallyAdmitted === 'Yes').length;
+    const conversion =
+      total > 0 ? Math.round((admitted / total) * 1000) / 10 : 0;
+    return { total, admitted, conversion };
+  }, [filteredAdmissions, gaugeSource]);
 
   // Chart geometry (single SVG so line + dots share coordinates)
   const chartW = 400;
@@ -85,7 +155,10 @@ export default function Dashboard({
   const padB = 28;
   const plotW = chartW - padL - padR;
   const plotH = chartH - padT - padB;
-  const maxY = 50;
+  const points = monthlyTrend.points || [];
+  const peakValue =
+    points.length > 0 ? Math.max(...points.map((d) => d.value)) : 0;
+  const maxY = niceMax(peakValue);
   const daysInMonth = monthlyTrend.daysInMonth || 31;
   const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const monthLabel = monthNames[(monthlyTrend.month || 1) - 1] || '';
@@ -95,7 +168,6 @@ export default function Dashboard({
   const yForVal = (value: number) =>
     padT + plotH - (Math.min(value, maxY) / maxY) * plotH;
 
-  const points = monthlyTrend.points || [];
   const linePoints =
     points.length > 0
       ? points.map((d) => `${xForDay(d.day)},${yForVal(d.value)}`).join(' ')
@@ -104,7 +176,7 @@ export default function Dashboard({
   const xTicks = [1, 5, 10, 15, 20, 25, daysInMonth].filter(
     (d, i, arr) => d <= daysInMonth && arr.indexOf(d) === i
   );
-  const yTicks = [0, 10, 20, 30, 40, 50];
+  const yTicks = buildYTicks(maxY);
 
   return (
     <div className="flex flex-col gap-2.5 h-full overflow-hidden">
@@ -155,10 +227,10 @@ export default function Dashboard({
       {/* KPI row - main metrics */}
       <div className="grid grid-cols-4 gap-2.5 shrink-0">
         {[
-          { icon: Users, color: 'bg-blue-50 text-[#1348f3]', label: 'Total OPD Consults', value: kpis.totalOpd, sub: 'Today', subColor: 'text-slate-400' },
-          { icon: ClipboardCheck, color: 'bg-emerald-50 text-[#0d9f6e]', label: 'Advised for Admission', value: kpis.advised, sub: 'Today', subColor: 'text-slate-400' },
-          { icon: BedDouble, color: 'bg-emerald-50 text-[#0d9f6e]', label: 'Actual Admissions', value: kpis.actual, sub: 'Today', subColor: 'text-slate-400' },
-          { icon: TrendingUp, color: 'bg-blue-50 text-[#1348f3]', label: 'Overall Conversion Rate', value: `${kpis.conversion}%`, sub: 'From admission log', subColor: 'text-slate-400' },
+          { icon: Users, color: 'bg-blue-50 text-[#1348f3]', label: 'Total OPD Consults', value: kpis.totalOpd, sub: periodLabel, subColor: 'text-slate-400' },
+          { icon: ClipboardCheck, color: 'bg-emerald-50 text-[#0d9f6e]', label: 'Advised for Admission', value: kpis.advised, sub: periodLabel, subColor: 'text-slate-400' },
+          { icon: BedDouble, color: 'bg-emerald-50 text-[#0d9f6e]', label: 'Actual Admissions', value: kpis.actual, sub: periodLabel, subColor: 'text-slate-400' },
+          { icon: TrendingUp, color: 'bg-blue-50 text-[#1348f3]', label: 'Overall Conversion Rate', value: `${kpis.conversion}%`, sub: periodLabel, subColor: 'text-slate-400' },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
@@ -243,9 +315,26 @@ export default function Dashboard({
           <div className="grid gap-2.5 min-h-0" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)' }}>
             {/* Conversion gauge - larger */}
             <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between shrink-0">
-                <h3 className="font-semibold text-slate-800 text-[12px]">OPD to IPD Conversion Rate</h3>
-                <span className="w-3.5 h-3.5 rounded-full bg-slate-100 text-slate-400 text-[9px] flex items-center justify-center">i</span>
+              <div className="flex items-center justify-between shrink-0 gap-1">
+                <h3 className="font-semibold text-slate-800 text-[12px] truncate">
+                  {gaugeSource === 'OPD' ? 'OPD → IPD' : 'ER → IPD'} Conversion
+                </h3>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {(['OPD', 'ER'] as const).map((src) => (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => setGaugeSource(src)}
+                      className={`px-1.5 py-0.5 text-[9px] font-semibold rounded border transition-colors ${
+                        gaugeSource === src
+                          ? 'bg-[#1348f3] text-white border-[#1348f3]'
+                          : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {src}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="flex-1 flex flex-col items-center justify-center min-h-0">
                 <div className="relative w-full max-w-[200px] aspect-[2/1.1]">
@@ -257,7 +346,7 @@ export default function Dashboard({
                       stroke="url(#g1)"
                       strokeWidth="16"
                       strokeLinecap="round"
-                      strokeDasharray={`${(Math.min(kpis.conversion, 100) / 100) * 267} 267`}
+                      strokeDasharray={`${(Math.min(gaugeStats.conversion, 100) / 100) * 267} 267`}
                     />
                     <defs>
                       <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -267,15 +356,17 @@ export default function Dashboard({
                     </defs>
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
-                    <span className="text-[26px] font-bold text-slate-900 leading-none">{kpis.conversion}%</span>
-                    <span className="text-[10px] text-slate-500">Overall Conversion Rate</span>
+                    <span className="text-[26px] font-bold text-slate-900 leading-none">{gaugeStats.conversion}%</span>
+                    <span className="text-[10px] text-slate-500">
+                      {gaugeSource === 'OPD' ? 'OPD → IPD' : 'ER → IPD'} rate
+                    </span>
                   </div>
                 </div>
                 <div className="mt-1.5 flex items-center gap-0.5 text-[10px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full">
-                  Live from admission log
+                  {gaugeStats.admitted} admitted / {gaugeStats.total} {gaugeSource} · {periodLabel}
                 </div>
                 <p className="mt-1 text-[9.5px] text-slate-500 text-center">
-                  {`Target: ≥ ${targetConversion}% | On track to achieve daily target`}
+                  {`Target: ≥ ${targetConversion}% · Direct excluded`}
                 </p>
               </div>
             </div>
@@ -284,9 +375,6 @@ export default function Dashboard({
             <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col overflow-hidden">
               <div className="flex items-center justify-between shrink-0 mb-1">
                 <h3 className="font-semibold text-slate-800 text-[12px]">Monthly Conversion Rate Trend</h3>
-                <span className="text-[10px] border border-slate-200 rounded px-1.5 py-0.5 text-slate-600 bg-white">
-                  {monthLabel} {monthlyTrend.year}
-                </span>
               </div>
               <div className="flex-1 min-h-0 relative">
                 {points.length === 0 ? (
@@ -381,7 +469,7 @@ export default function Dashboard({
                   Top 5 Physicians by Conversion Rate
                 </h3>
               </div>
-              <span className="text-[9.5px] text-slate-400">Ranked by conversion rate · Today</span>
+              <span className="text-[9.5px] text-slate-400">Ranked by conversion rate · {periodLabel}</span>
             </div>
             <div className="overflow-auto flex-1">
               <table className="w-full text-[11.5px] table-fixed">

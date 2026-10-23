@@ -166,6 +166,31 @@ export default function App() {
     document.documentElement.classList.toggle('dark', settings.theme === 'dark');
   }, [settings.theme, settingsLoaded]);
 
+  // Sync URL hash ↔ current page + browser tab title (must be before any early returns)
+  useEffect(() => {
+    applyDocumentTitle(currentPage);
+  }, [currentPage]);
+
+  useEffect(() => {
+    const onHash = () => {
+      const fromUrl = pageFromHash();
+      if (!fromUrl) return;
+      if (!isAdmin && fromUrl === 'dashboard') {
+        setCurrentPage('admission-log');
+        setHashForPage('admission-log');
+        return;
+      }
+      if (isDoctor && fromUrl === 'physicians') {
+        setCurrentPage('admission-log');
+        setHashForPage('admission-log');
+        return;
+      }
+      setCurrentPage(fromUrl);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [isAdmin, isDoctor]);
+
   if (authLoading) {
     return <PageSkeleton page={currentPage} collapsed={collapsed} />;
   }
@@ -259,32 +284,6 @@ export default function App() {
     applyDocumentTitle(page);
   };
 
-  // Sync URL hash ↔ current page + browser tab title
-  useEffect(() => {
-    applyDocumentTitle(currentPage);
-  }, [currentPage]);
-
-  useEffect(() => {
-    const onHash = () => {
-      const fromUrl = pageFromHash();
-      if (!fromUrl) return;
-      if (!isAdmin && fromUrl === 'dashboard') {
-        setCurrentPage('admission-log');
-        setHashForPage('admission-log');
-        return;
-      }
-      if (isDoctor && fromUrl === 'physicians') {
-        setCurrentPage('admission-log');
-        setHashForPage('admission-log');
-        return;
-      }
-      setCurrentPage(fromUrl);
-    };
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, [isAdmin, isDoctor]);
-
-
   // Doctors only see their own admissions (by OPD attending name)
   const visibleAdmissions = roleScopedAdmissions;
 
@@ -353,6 +352,7 @@ export default function App() {
                 onDateTo={setDateTo}
                 onExport={handleExportFiltered}
                 filteredCount={filteredAdmissions.length}
+                filteredAdmissions={filteredAdmissions}
               />
             )}
             {currentPage === 'admission-log' && (
