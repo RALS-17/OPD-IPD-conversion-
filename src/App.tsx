@@ -22,6 +22,50 @@ import { LogOut } from 'lucide-react';
 import NotificationBell from './components/NotificationBell';
 import { buildNotifications } from './lib/notifications';
 
+
+const PAGE_PATH: Record<Page, string> = {
+  dashboard: 'dashboard',
+  'admission-log': 'admission-log',
+  'physician-summary': 'physician-summary',
+  physicians: 'physicians',
+  settings: 'settings',
+};
+
+const PATH_PAGE: Record<string, Page> = {
+  dashboard: 'dashboard',
+  'admission-log': 'admission-log',
+  'physician-summary': 'physician-summary',
+  physicians: 'physicians',
+  settings: 'settings',
+};
+
+const PAGE_TITLE: Record<Page, string> = {
+  dashboard: 'Dashboard',
+  'admission-log': 'Admission Log',
+  'physician-summary': 'Physician Summary',
+  physicians: 'Physicians',
+  settings: 'Settings',
+};
+
+function pageFromHash(): Page | null {
+  const raw = (window.location.hash || '').replace(/^#\/?/, '').split('?')[0].trim();
+  if (!raw) return null;
+  return PATH_PAGE[raw] ?? null;
+}
+
+function setHashForPage(page: Page) {
+  const path = PAGE_PATH[page];
+  const next = `#/${path}`;
+  if (window.location.hash !== next) {
+    window.location.hash = next;
+  }
+}
+
+function applyDocumentTitle(page: Page) {
+  document.title = `${PAGE_TITLE[page]} | Global Care OPD → IPD`;
+}
+
+
 export default function App() {
   const {
     profile,
@@ -52,7 +96,15 @@ export default function App() {
     if (!profile) return;
     if (!defaultPageSet.current) {
       defaultPageSet.current = true;
-      setCurrentPage(profile.role === 'admin' ? 'dashboard' : 'admission-log');
+      const fromUrl = pageFromHash();
+      let next: Page =
+        fromUrl ??
+        (profile.role === 'admin' ? 'dashboard' : 'admission-log');
+      if (profile.role !== 'admin' && next === 'dashboard') next = 'admission-log';
+      if (profile.role === 'doctor' && next === 'physicians') next = 'admission-log';
+      setCurrentPage(next);
+      setHashForPage(next);
+      applyDocumentTitle(next);
     }
   }, [isAuthenticated, profile]);
 
@@ -61,9 +113,11 @@ export default function App() {
     if (!isAuthenticated || !profile) return;
     if (profile.role !== 'admin' && currentPage === 'dashboard') {
       setCurrentPage('admission-log');
+      setHashForPage('admission-log');
     }
     if (profile.role === 'doctor' && currentPage === 'physicians') {
       setCurrentPage('admission-log');
+      setHashForPage('admission-log');
     }
   }, [isAuthenticated, profile, currentPage]);
 
@@ -201,7 +255,35 @@ export default function App() {
     if (!isAdmin && page === 'dashboard') return;
     if (isDoctor && page === 'physicians') return;
     setCurrentPage(page);
+    setHashForPage(page);
+    applyDocumentTitle(page);
   };
+
+  // Sync URL hash ↔ current page + browser tab title
+  useEffect(() => {
+    applyDocumentTitle(currentPage);
+  }, [currentPage]);
+
+  useEffect(() => {
+    const onHash = () => {
+      const fromUrl = pageFromHash();
+      if (!fromUrl) return;
+      if (!isAdmin && fromUrl === 'dashboard') {
+        setCurrentPage('admission-log');
+        setHashForPage('admission-log');
+        return;
+      }
+      if (isDoctor && fromUrl === 'physicians') {
+        setCurrentPage('admission-log');
+        setHashForPage('admission-log');
+        return;
+      }
+      setCurrentPage(fromUrl);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [isAdmin, isDoctor]);
+
 
   // Doctors only see their own admissions (by OPD attending name)
   const visibleAdmissions = roleScopedAdmissions;
