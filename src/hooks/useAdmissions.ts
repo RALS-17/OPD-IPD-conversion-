@@ -548,10 +548,32 @@ export function useAdmissions() {
 
   const getMonthlyTrend = useCallback((list?: Admission[]) => {
     const source = list ?? admissions;
-    // Group by day of current calendar month from dateOfAdmission
+    // Prefer month with the most rows in the list; fall back to current calendar month
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth(); // 0-based
+    let year = now.getFullYear();
+    let month = now.getMonth(); // 0-based
+    const monthCounts = new Map<string, number>();
+    source.forEach((a) => {
+      if (!a.dateOfAdmission || a.dateOfAdmission.length < 7) return;
+      const key = a.dateOfAdmission.slice(0, 7); // YYYY-MM
+      monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
+    });
+    if (monthCounts.size > 0) {
+      let best = '';
+      let bestN = -1;
+      monthCounts.forEach((n, k) => {
+        if (n > bestN) {
+          bestN = n;
+          best = k;
+        }
+      });
+      if (best) {
+        const [ys, ms] = best.split('-');
+        year = Number(ys);
+        month = Number(ms) - 1;
+      }
+    }
+
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     const byDay: Record<number, { total: number; admitted: number }> = {};
@@ -566,7 +588,6 @@ export function useAdmissions() {
       if (a.actuallyAdmitted === 'Yes') byDay[day].admitted += 1;
     });
 
-    // Points only for days that have data, plus evenly spaced labels
     const points: { day: number; value: number }[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const { total, admitted } = byDay[d];

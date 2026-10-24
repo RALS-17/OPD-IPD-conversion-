@@ -15,12 +15,15 @@ import type { Page } from './types';
 import {
   filterByDateRange,
   filterByPhysician,
+  previousRange,
   rangeForPreset,
   type DatePreset,
 } from './lib/admissionFilters';
 import { LogOut } from 'lucide-react';
 import NotificationBell from './components/NotificationBell';
 import { buildNotifications } from './lib/notifications';
+import PhysicianDetail from './components/PhysicianDetail';
+import { printDashboardSnapshot } from './lib/printDashboard';
 
 
 const PAGE_PATH: Record<Page, string> = {
@@ -85,6 +88,7 @@ export default function App() {
   const [datePreset, setDatePreset] = useState<DatePreset>('month');
   const [dateFrom, setDateFrom] = useState(() => rangeForPreset('month')?.from || '');
   const [dateTo, setDateTo] = useState(() => rangeForPreset('month')?.to || '');
+  const [drillPhysician, setDrillPhysician] = useState<string | null>(null);
   const defaultPageSet = useRef(false);
 
   // Set default page once profile is known (admin → Dashboard)
@@ -229,6 +233,13 @@ export default function App() {
     activeRange?.to
   );
 
+  const prevRangeInfo = previousRange(datePreset, dateFrom, dateTo);
+  const prevAdmissions = prevRangeInfo
+    ? filterByDateRange(roleScopedAdmissions, prevRangeInfo.from, prevRangeInfo.to)
+    : [];
+  const prevKpis = prevRangeInfo ? getKpis(prevAdmissions) : null;
+  const prevMonthlyTrend = prevRangeInfo ? getMonthlyTrend(prevAdmissions) : null;
+
   const kpis = getKpis(filteredAdmissions);
   const mix = getMix(filteredAdmissions);
   const physicianStats = getPhysicianStats(filteredAdmissions);
@@ -238,6 +249,36 @@ export default function App() {
 
   const handleExportFiltered = () => {
     exportCsv(filteredAdmissions);
+  };
+
+  const periodLabelForPrint = (() => {
+    if (datePreset === 'today') return 'Today';
+    if (datePreset === 'week') return 'Last 7 days';
+    if (datePreset === 'month') return 'This month';
+    if (datePreset === 'all') return 'All time';
+    if (dateFrom && dateTo) return `${dateFrom} – ${dateTo}`;
+    return 'Custom range';
+  })();
+
+  const handlePrintSnapshot = () => {
+    printDashboardSnapshot({
+      hospitalName: settings.hospitalName,
+      branch: settings.branch,
+      periodLabel: periodLabelForPrint,
+      compareLabel: prevRangeInfo?.label ?? null,
+      generatedAt: new Date().toLocaleString(),
+      kpis,
+      prevKpis,
+      topPhysicians: physicianStats.slice(0, 10).map((p) => ({
+        physician: p.physician,
+        department: departmentByName[p.physician],
+        totalOpdConsults: p.totalOpdConsults,
+        actualAdmissionsFromOpd: p.actualAdmissionsFromOpd,
+        conversionRate: p.conversionRate,
+      })),
+      topDiagnoses: topDiagnoses.slice(0, 10),
+      filteredCount: filteredAdmissions.length,
+    });
   };
 
   const notifItems = buildNotifications({
@@ -335,12 +376,15 @@ export default function App() {
             {currentPage === 'dashboard' && isAdmin && (
               <Dashboard
                 kpis={kpis}
+                prevKpis={prevKpis}
+                compareLabel={prevRangeInfo?.label ?? null}
                 mix={mix}
                 physicianStats={physicianStats}
                 departmentByName={departmentByName}
                 topDiagnoses={topDiagnoses}
                 topComplaints={topComplaints}
                 monthlyTrend={monthlyTrend}
+                prevMonthlyTrend={prevMonthlyTrend}
                 targetConversion={settings.targetConversion}
                 goodThreshold={settings.goodThreshold}
                 averageThreshold={settings.averageThreshold}
@@ -351,8 +395,10 @@ export default function App() {
                 onDateFrom={setDateFrom}
                 onDateTo={setDateTo}
                 onExport={handleExportFiltered}
+                onPrintSnapshot={handlePrintSnapshot}
                 filteredCount={filteredAdmissions.length}
                 filteredAdmissions={filteredAdmissions}
+                onPhysicianClick={(name) => setDrillPhysician(name)}
               />
             )}
             {currentPage === 'admission-log' && (
@@ -362,6 +408,8 @@ export default function App() {
                 onUpdate={updateAdmission}
                 onDelete={deleteAdmission}
                 physicians={physicianNames}
+                isDoctor={isDoctor}
+                physicianName={physicianName}
               />
             )}
             {currentPage === 'physician-summary' && (
@@ -369,6 +417,8 @@ export default function App() {
                 stats={getPhysicianStats(roleScopedAdmissions)}
                 goodThreshold={settings.goodThreshold}
                 averageThreshold={settings.averageThreshold}
+                departmentByName={departmentByName}
+                onPhysicianClick={(name) => setDrillPhysician(name)}
               />
             )}
             {currentPage === 'physicians' && !isDoctor && (
@@ -398,6 +448,17 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      {drillPhysician && (
+        <PhysicianDetail
+          physician={drillPhysician}
+          admissions={roleScopedAdmissions}
+          department={departmentByName[drillPhysician]}
+          goodThreshold={settings.goodThreshold}
+          averageThreshold={settings.averageThreshold}
+          onClose={() => setDrillPhysician(null)}
+        />
+      )}
     </div>
   );
 }

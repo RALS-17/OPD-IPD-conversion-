@@ -4,12 +4,15 @@ interface PhysicianSummaryProps {
   stats: PhysicianStats[];
   goodThreshold: number;
   averageThreshold: number;
+  departmentByName?: Record<string, string>;
+  onPhysicianClick?: (name: string) => void;
 }
 
 export default function PhysicianSummary({
   stats,
   goodThreshold,
   averageThreshold,
+  onPhysicianClick,
 }: PhysicianSummaryProps) {
   const avgConversion =
     stats.length > 0
@@ -118,7 +121,12 @@ export default function PhysicianSummary({
                     className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
                   >
                     <td className="px-3 py-1.5">
-                      <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onPhysicianClick?.(s.physician)}
+                        className="flex items-center gap-1.5 text-left group"
+                        title="View physician details"
+                      >
                         <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-[8px] font-bold text-blue-700 shrink-0">
                           {s.physician
                             .replace('Dr. ', '')
@@ -127,8 +135,10 @@ export default function PhysicianSummary({
                             .join('')
                             .slice(0, 2)}
                         </div>
-                        <span className="font-medium text-slate-800">{s.physician}</span>
-                      </div>
+                        <span className="font-medium text-slate-800 group-hover:text-[#1348f3] group-hover:underline">
+                          {s.physician}
+                        </span>
+                      </button>
                     </td>
                     <td className="px-2 py-1.5 text-right text-slate-600">
                       {s.totalOpdConsults}

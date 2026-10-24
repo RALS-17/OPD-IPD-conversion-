@@ -31,19 +31,24 @@ interface MonthlyTrend {
 
 type GaugeSource = 'OPD' | 'ER';
 
+type KpiBlock = {
+  totalOpd: number;
+  advised: number;
+  actual: number;
+  conversion: number;
+};
+
 interface DashboardProps {
-  kpis: {
-    totalOpd: number;
-    advised: number;
-    actual: number;
-    conversion: number;
-  };
+  kpis: KpiBlock;
+  prevKpis?: KpiBlock | null;
+  compareLabel?: string | null;
   mix: MixStats;
   physicianStats: PhysicianStats[];
   departmentByName?: Record<string, string>;
   topDiagnoses: RankedItem[];
   topComplaints: RankedItem[];
   monthlyTrend: MonthlyTrend;
+  prevMonthlyTrend?: MonthlyTrend | null;
   targetConversion: number;
   goodThreshold: number;
   averageThreshold: number;
@@ -54,9 +59,25 @@ interface DashboardProps {
   onDateFrom: (v: string) => void;
   onDateTo: (v: string) => void;
   onExport: () => void;
+  onPrintSnapshot?: () => void;
   filteredCount: number;
   /** Date-filtered admissions used for the conversion gauge (source filter applied inside). */
   filteredAdmissions: Admission[];
+  onPhysicianClick?: (name: string) => void;
+}
+
+function deltaLabel(cur: number, prev: number | undefined | null, suffix = ''): string | null {
+  if (prev === undefined || prev === null) return null;
+  const d = Math.round((cur - prev) * 10) / 10;
+  const sign = d > 0 ? '+' : '';
+  return `${sign}${d}${suffix}`;
+}
+
+function deltaTone(cur: number, prev: number | undefined | null): string {
+  if (prev === undefined || prev === null) return 'text-slate-400';
+  if (cur > prev) return 'text-emerald-600';
+  if (cur < prev) return 'text-red-500';
+  return 'text-slate-400';
 }
 
 function dateFilterLabel(
@@ -110,12 +131,15 @@ function buildYTicks(maxY: number): number[] {
 
 export default function Dashboard({
   kpis,
+  prevKpis = null,
+  compareLabel = null,
   mix,
   physicianStats,
   departmentByName = {},
   topDiagnoses,
   topComplaints,
   monthlyTrend,
+  prevMonthlyTrend = null,
   targetConversion,
   goodThreshold,
   averageThreshold,
@@ -126,8 +150,10 @@ export default function Dashboard({
   onDateFrom,
   onDateTo,
   onExport,
+  onPrintSnapshot,
   filteredCount,
   filteredAdmissions,
+  onPhysicianClick,
 }: DashboardProps) {
   const topPhysicians = physicianStats.slice(0, 5);
   const periodLabel = dateFilterLabel(datePreset, dateFrom, dateTo);
@@ -135,6 +161,7 @@ export default function Dashboard({
   // Gauge source mode: OPD → IPD (default) or ER → IPD
   const [gaugeSource, setGaugeSource] = useState<GaugeSource>('OPD');
   const [hoverPoint, setHoverPoint] = useState<{ day: number; value: number; x: number; y: number } | null>(null);
+  const [showPrevTrend, setShowPrevTrend] = useState(true);
 
   const gaugeStats = useMemo(() => {
     const list = filteredAdmissions.filter(
@@ -157,8 +184,12 @@ export default function Dashboard({
   const plotW = chartW - padL - padR;
   const plotH = chartH - padT - padB;
   const points = monthlyTrend.points || [];
-  const peakValue =
-    points.length > 0 ? Math.max(...points.map((d) => d.value)) : 0;
+  const prevPoints = prevMonthlyTrend?.points || [];
+  const peakValue = Math.max(
+    0,
+    ...points.map((d) => d.value),
+    ...(showPrevTrend ? prevPoints.map((d) => d.value) : [])
+  );
   const maxY = niceMax(peakValue);
   const daysInMonth = monthlyTrend.daysInMonth || 31;
   const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -167,11 +198,15 @@ export default function Dashboard({
   const xForDay = (day: number) =>
     padL + ((day - 1) / Math.max(daysInMonth - 1, 1)) * plotW;
   const yForVal = (value: number) =>
-    padT + plotH - (Math.min(value, maxY) / maxY) * plotH;
+    padT + plotH - (Math.min(value, maxY) / Math.max(maxY, 1)) * plotH;
 
   const linePoints =
     points.length > 0
       ? points.map((d) => `${xForDay(d.day)},${yForVal(d.value)}`).join(' ')
+      : '';
+  const prevLinePoints =
+    prevPoints.length > 0
+      ? prevPoints.map((d) => `${xForDay(d.day)},${yForVal(d.value)}`).join(' ')
       : '';
 
   const xTicks = [1, 5, 10, 15, 20, 25, daysInMonth].filter(
@@ -217,37 +252,91 @@ export default function Dashboard({
           )}
           <span className="text-[10px] text-slate-400 ml-1">{filteredCount} records</span>
         </div>
-        <button
-          type="button"
-          onClick={onExport}
-          className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-white bg-[#0d9f6e] rounded-md hover:bg-emerald-700"
-        >
-          Export filtered CSV
-        </button>
+        <div className="flex items-center gap-1.5">
+          {onPrintSnapshot && (
+            <button
+              type="button"
+              onClick={onPrintSnapshot}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-md hover:bg-slate-50"
+            >
+              Print / PDF
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onExport}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-white bg-[#0d9f6e] rounded-md hover:bg-emerald-700"
+          >
+            Export filtered CSV
+          </button>
+        </div>
       </div>
       {/* KPI row - main metrics */}
       <div className="grid grid-cols-4 gap-1.5 shrink-0">
         {[
-          { icon: Users, color: 'bg-blue-50 text-[#1348f3]', label: 'Total OPD Consults', value: kpis.totalOpd, sub: periodLabel, subColor: 'text-slate-400' },
-          { icon: ClipboardCheck, color: 'bg-emerald-50 text-[#0d9f6e]', label: 'Advised for Admission', value: kpis.advised, sub: periodLabel, subColor: 'text-slate-400' },
-          { icon: BedDouble, color: 'bg-emerald-50 text-[#0d9f6e]', label: 'Actual Admissions', value: kpis.actual, sub: periodLabel, subColor: 'text-slate-400' },
-          { icon: TrendingUp, color: 'bg-blue-50 text-[#1348f3]', label: 'Overall Conversion Rate', value: `${kpis.conversion}%`, sub: periodLabel, subColor: 'text-slate-400' },
+          {
+            icon: Users,
+            color: 'bg-blue-50 text-[#1348f3]',
+            label: 'Total OPD Consults',
+            value: kpis.totalOpd,
+            prev: prevKpis?.totalOpd,
+            suffix: '',
+          },
+          {
+            icon: ClipboardCheck,
+            color: 'bg-emerald-50 text-[#0d9f6e]',
+            label: 'Advised for Admission',
+            value: kpis.advised,
+            prev: prevKpis?.advised,
+            suffix: '',
+          },
+          {
+            icon: BedDouble,
+            color: 'bg-emerald-50 text-[#0d9f6e]',
+            label: 'Actual Admissions',
+            value: kpis.actual,
+            prev: prevKpis?.actual,
+            suffix: '',
+          },
+          {
+            icon: TrendingUp,
+            color: 'bg-blue-50 text-[#1348f3]',
+            label: 'Overall Conversion Rate',
+            value: kpis.conversion,
+            display: `${kpis.conversion}%`,
+            prev: prevKpis?.conversion,
+            suffix: ' pts',
+          },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
+          const d = deltaLabel(kpi.value as number, kpi.prev, kpi.suffix);
+          const tip = d
+            ? `${kpi.label}: ${kpi.display ?? kpi.value} · ${periodLabel} · ${d} ${compareLabel || ''}`
+            : `${kpi.label}: ${kpi.display ?? kpi.value} · ${periodLabel}`;
           return (
             <div
               key={i}
               className="dash-card dash-tip bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5 flex items-center gap-2.5 h-[72px]"
-              data-tip={`${kpi.label}: ${kpi.value} · ${kpi.sub}`}
+              data-tip={tip}
             >
               <div className={`w-8 h-8 rounded-md ${kpi.color} flex items-center justify-center shrink-0`}>
                 <Icon size={15} />
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-medium text-slate-500 truncate">{kpi.label}</p>
-                <p className="text-[18px] font-bold text-slate-900 leading-tight">{kpi.value}</p>
-                <p className={`text-[10px] ${kpi.subColor} flex items-center gap-0.5`}>
-                  {i < 3 && <Calendar size={10} />} {kpi.sub}
+                <p className="text-[18px] font-bold text-slate-900 leading-tight">
+                  {kpi.display ?? kpi.value}
+                </p>
+                <p className="text-[10px] text-slate-400 flex items-center gap-1 flex-wrap">
+                  <span className="inline-flex items-center gap-0.5">
+                    <Calendar size={10} /> {periodLabel}
+                  </span>
+                  {d && (
+                    <span className={`font-semibold ${deltaTone(kpi.value as number, kpi.prev)}`}>
+                      {d}
+                      {compareLabel ? ` ${compareLabel.replace(/^vs /, '')}` : ''}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -379,13 +468,27 @@ export default function Dashboard({
 
             {/* Trend chart — line and dots share the same SVG coordinates */}
             <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm p-2.5 flex flex-col overflow-hidden min-h-0 h-full">
-              <div className="flex items-center justify-between shrink-0 mb-1">
+              <div className="flex items-center justify-between shrink-0 mb-1 gap-2">
                 <h3 className="font-semibold text-slate-800 text-[12px]">Monthly Conversion Rate Trend</h3>
+                {prevPoints.length > 0 && (
+                  <label className="inline-flex items-center gap-1 text-[9.5px] text-slate-500 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showPrevTrend}
+                      onChange={(e) => setShowPrevTrend(e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    {compareLabel || 'Prior period'}
+                  </label>
+                )}
               </div>
               <div className="flex-1 min-h-0 relative">
                 {points.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-[11px] text-slate-400">
-                    No conversion data this month yet
+                  <div className="h-full flex flex-col items-center justify-center text-center px-3">
+                    <p className="text-[11px] font-medium text-slate-600">No conversion points yet</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Add admissions with dates this month, or switch the date filter.
+                    </p>
                   </div>
                 ) : (
                   <svg
@@ -432,7 +535,20 @@ export default function Dashboard({
                         {day === 1 || day === daysInMonth ? `${day} ${monthLabel}` : String(day)}
                       </text>
                     ))}
-                    {/* Line connecting points */}
+                    {/* Prior period line (comparison) */}
+                    {showPrevTrend && prevPoints.length > 1 && (
+                      <polyline
+                        fill="none"
+                        stroke="#94a3b8"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeDasharray="4 3"
+                        points={prevLinePoints}
+                        opacity={0.85}
+                      />
+                    )}
+                    {/* Current period line */}
                     {points.length > 1 && (
                       <polyline
                         fill="none"
@@ -484,8 +600,15 @@ export default function Dashboard({
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 mt-0.5 text-[9px] text-slate-500 shrink-0">
-                <span className="w-3 h-0.5 bg-[#0d9f6e] rounded" /> Conversion Rate (%)
+              <div className="flex items-center gap-2 mt-0.5 text-[9px] text-slate-500 shrink-0 flex-wrap">
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-3 h-0.5 bg-[#0d9f6e] rounded" /> Current
+                </span>
+                {showPrevTrend && prevPoints.length > 0 && (
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-3 h-0.5 bg-slate-400 rounded border-t border-dashed" /> Prior
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -516,8 +639,11 @@ export default function Dashboard({
                 <tbody>
                   {topPhysicians.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-3 py-4 text-center text-slate-400">
-                        No data yet
+                      <td colSpan={6} className="px-3 py-6 text-center">
+                        <p className="text-[12px] font-medium text-slate-600">No physician stats yet</p>
+                        <p className="text-[10.5px] text-slate-400 mt-0.5">
+                          Add admissions with an OPD attending physician for this period.
+                        </p>
                       </td>
                     </tr>
                   ) : (
@@ -539,7 +665,12 @@ export default function Dashboard({
                             </span>
                           </td>
                           <td className="px-2 py-1.5">
-                            <div className="flex items-center gap-1.5 min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => onPhysicianClick?.(p.physician)}
+                              className="flex items-center gap-1.5 min-w-0 text-left group"
+                              title="View physician details"
+                            >
                               <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center text-[8px] font-bold text-blue-700 shrink-0">
                                 {p.physician
                                   .replace('Dr. ', '')
@@ -548,8 +679,10 @@ export default function Dashboard({
                                   .join('')
                                   .slice(0, 2)}
                               </div>
-                              <span className="font-medium text-slate-800 truncate">{p.physician}</span>
-                            </div>
+                              <span className="font-medium text-slate-800 truncate group-hover:text-[#1348f3] group-hover:underline">
+                                {p.physician}
+                              </span>
+                            </button>
                           </td>
                           <td className="px-2 py-1.5 text-slate-500 truncate">{dept}</td>
                           <td className="px-2 py-1.5 text-right text-slate-600 tabular-nums">{p.totalOpdConsults}</td>
@@ -593,7 +726,10 @@ export default function Dashboard({
             </h3>
             <div className="flex-1 overflow-hidden min-h-0">
               {topDiagnoses.length === 0 ? (
-                <p className="text-center text-slate-400 py-4 text-[11px]">No data yet</p>
+                <div className="text-center py-4 px-2">
+                  <p className="text-[11px] font-medium text-slate-600">No diagnoses yet</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Fill diagnosis on admission rows.</p>
+                </div>
               ) : (
                 topDiagnoses.map((item, idx) => {
                   const max = topDiagnoses[0]?.count || 1;
@@ -639,7 +775,10 @@ export default function Dashboard({
             </h3>
             <div className="flex-1 overflow-hidden min-h-0">
               {topComplaints.length === 0 ? (
-                <p className="text-center text-slate-400 py-4 text-[11px]">No data yet</p>
+                <div className="text-center py-4 px-2">
+                  <p className="text-[11px] font-medium text-slate-600">No chief complaints yet</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Fill chief complaint on admission rows.</p>
+                </div>
               ) : (
                 topComplaints.map((item, idx) => {
                   const max = topComplaints[0]?.count || 1;
