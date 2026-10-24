@@ -134,6 +134,7 @@ export default function Dashboard({
 
   // Gauge source mode: OPD → IPD (default) or ER → IPD
   const [gaugeSource, setGaugeSource] = useState<GaugeSource>('OPD');
+  const [hoverPoint, setHoverPoint] = useState<{ day: number; value: number; x: number; y: number } | null>(null);
 
   const gaugeStats = useMemo(() => {
     const list = filteredAdmissions.filter(
@@ -179,7 +180,7 @@ export default function Dashboard({
   const yTicks = buildYTicks(maxY);
 
   return (
-    <div className="flex flex-col gap-2.5 h-full overflow-hidden">
+    <div className="flex flex-col gap-1.5 h-full overflow-hidden">
       {/* Date range + export */}
       <div className="shrink-0 flex flex-wrap items-center gap-2 justify-between">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -225,7 +226,7 @@ export default function Dashboard({
         </button>
       </div>
       {/* KPI row - main metrics */}
-      <div className="grid grid-cols-4 gap-2.5 shrink-0">
+      <div className="grid grid-cols-4 gap-1.5 shrink-0">
         {[
           { icon: Users, color: 'bg-blue-50 text-[#1348f3]', label: 'Total OPD Consults', value: kpis.totalOpd, sub: periodLabel, subColor: 'text-slate-400' },
           { icon: ClipboardCheck, color: 'bg-emerald-50 text-[#0d9f6e]', label: 'Advised for Admission', value: kpis.advised, sub: periodLabel, subColor: 'text-slate-400' },
@@ -234,7 +235,11 @@ export default function Dashboard({
         ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
-            <div key={i} className="bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5 flex items-center gap-2.5 h-[72px]">
+            <div
+              key={i}
+              className="dash-card dash-tip bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5 flex items-center gap-2.5 h-[72px]"
+              data-tip={`${kpi.label}: ${kpi.value} · ${kpi.sub}`}
+            >
               <div className={`w-8 h-8 rounded-md ${kpi.color} flex items-center justify-center shrink-0`}>
                 <Icon size={15} />
               </div>
@@ -251,7 +256,7 @@ export default function Dashboard({
       </div>
 
       {/* Patient & payment mix */}
-      <div className="grid grid-cols-4 gap-2.5 shrink-0">
+      <div className="grid grid-cols-4 gap-1.5 shrink-0">
         {[
           {
             icon: Shield,
@@ -290,7 +295,8 @@ export default function Dashboard({
           return (
             <div
               key={i}
-              className="bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5 flex items-center gap-2.5 h-[72px]"
+              className="dash-card dash-tip bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5 flex items-center gap-2.5 h-[72px]"
+              data-tip={`${kpi.label}: ${kpi.value} · ${kpi.sub}`}
             >
               <div
                 className={`w-8 h-8 rounded-md ${kpi.color} flex items-center justify-center shrink-0`}
@@ -307,14 +313,14 @@ export default function Dashboard({
         })}
       </div>
 
-      {/* Main body: equal-height columns */}
-      <div className="flex-1 min-h-0 grid grid-cols-3 gap-2.5 items-stretch">
+      {/* Main body: left (gauge+chart / physicians) | right (diagnoses / complaints) */}
+      <div className="flex-1 min-h-0 grid grid-cols-3 gap-1.5 items-stretch">
         {/* LEFT 2/3 */}
-        <div className="col-span-2 grid grid-rows-[minmax(0,1fr)_minmax(0,1.05fr)] gap-2.5 min-h-0">
-          {/* Gauge + Chart — same row height, aligned */}
-          <div className="grid gap-2.5 min-h-0" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)' }}>
-            {/* Conversion gauge - larger */}
-            <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col overflow-hidden">
+        <div className="col-span-2 grid grid-rows-2 gap-1.5 min-h-0">
+          {/* Gauge + Chart — same row height */}
+          <div className="grid min-h-0 gap-1.5" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)' }}>
+            {/* Conversion gauge */}
+            <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm p-2.5 flex flex-col overflow-hidden min-h-0 h-full">
               <div className="flex items-center justify-between shrink-0 gap-1">
                 <h3 className="font-semibold text-slate-800 text-[12px] truncate">
                   {gaugeSource === 'OPD' ? 'OPD → IPD' : 'ER → IPD'} Conversion
@@ -372,7 +378,7 @@ export default function Dashboard({
             </div>
 
             {/* Trend chart — line and dots share the same SVG coordinates */}
-            <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col overflow-hidden">
+            <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm p-2.5 flex flex-col overflow-hidden min-h-0 h-full">
               <div className="flex items-center justify-between shrink-0 mb-1">
                 <h3 className="font-semibold text-slate-800 text-[12px]">Monthly Conversion Rate Trend</h3>
               </div>
@@ -437,21 +443,45 @@ export default function Dashboard({
                         points={linePoints}
                       />
                     )}
-                    {/* Dots on same coordinates as line */}
-                    {points.map((d) => (
-                      <circle
-                        key={d.day}
-                        cx={xForDay(d.day)}
-                        cy={yForVal(d.value)}
-                        r="4"
-                        fill="white"
-                        stroke="#0d9f6e"
-                        strokeWidth="2"
-                      >
-                        <title>{`${d.day} ${monthLabel}: ${d.value}%`}</title>
-                      </circle>
-                    ))}
+                    {/* Dots + large hit area for instant hover */}
+                    {points.map((d) => {
+                      const cx = xForDay(d.day);
+                      const cy = yForVal(d.value);
+                      const active = hoverPoint?.day === d.day;
+                      return (
+                        <g
+                          key={d.day}
+                          onMouseEnter={() => setHoverPoint({ day: d.day, value: d.value, x: cx, y: cy })}
+                          onMouseLeave={() => setHoverPoint(null)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {/* Invisible larger hit target — no delay */}
+                          <circle cx={cx} cy={cy} r="12" fill="transparent" />
+                          <circle
+                            cx={cx}
+                            cy={cy}
+                            r={active ? 5.5 : 4}
+                            fill="white"
+                            stroke="#0d9f6e"
+                            strokeWidth={active ? 2.5 : 2}
+                          />
+                        </g>
+                      );
+                    })}
                   </svg>
+                )}
+                {/* Instant tooltip for chart point */}
+                {hoverPoint && (
+                  <div
+                    className="pointer-events-none absolute z-20 px-2 py-0.5 rounded-md bg-slate-900 text-white text-[10px] font-semibold shadow-md whitespace-nowrap"
+                    style={{
+                      left: `${(hoverPoint.x / chartW) * 100}%`,
+                      top: `${(hoverPoint.y / chartH) * 100}%`,
+                      transform: 'translate(-50%, calc(-100% - 8px))',
+                    }}
+                  >
+                    Day {hoverPoint.day}{monthLabel ? ` ${monthLabel}` : ''}: {hoverPoint.value}%
+                  </div>
                 )}
               </div>
               <div className="flex items-center gap-1.5 mt-0.5 text-[9px] text-slate-500 shrink-0">
@@ -461,7 +491,7 @@ export default function Dashboard({
           </div>
 
           {/* Top 5 Physicians */}
-          <div className="bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden min-h-0 flex flex-col h-full">
+          <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden min-h-0 flex flex-col h-full">
             <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs">🏆</span>
@@ -494,7 +524,11 @@ export default function Dashboard({
                     topPhysicians.map((p, idx) => {
                       const dept = departmentByName[p.physician] || '—';
                       return (
-                        <tr key={p.physician} className="border-b border-slate-50 last:border-0">
+                        <tr
+                          key={p.physician}
+                          className="dash-row border-b border-slate-50 last:border-0"
+                          title={`${p.physician}: ${p.conversionRate}% (${p.actualAdmissionsFromOpd}/${p.totalOpdConsults})`}
+                        >
                           <td className="px-2 py-1.5">
                             <span
                               className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold ${
@@ -550,14 +584,14 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* RIGHT 1/3: equal split diagnoses / complaints */}
-        <div className="grid grid-rows-2 gap-2.5 min-h-0 h-full">
+        {/* RIGHT 1/3: diagnoses on top, complaints below — equal height, aligned to left */}
+        <div className="grid grid-rows-2 gap-1.5 min-h-0 h-full">
           {/* Top 5 Diagnoses */}
-          <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col min-h-0 overflow-hidden h-full">
-            <h3 className="font-semibold text-slate-800 text-[12px] shrink-0 mb-1.5">
+          <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm p-2.5 flex flex-col min-h-0 overflow-hidden h-full">
+            <h3 className="font-semibold text-slate-800 text-[12px] shrink-0 mb-1">
               Top 5 Diagnoses
             </h3>
-            <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="flex-1 overflow-hidden min-h-0">
               {topDiagnoses.length === 0 ? (
                 <p className="text-center text-slate-400 py-4 text-[11px]">No data yet</p>
               ) : (
@@ -567,7 +601,8 @@ export default function Dashboard({
                   return (
                     <div
                       key={item.name}
-                      className="flex items-center gap-2 py-1.5 border-b border-slate-50 last:border-0"
+                      className="dash-row dash-tip flex items-center gap-2 py-1.5 px-1 -mx-1 rounded border-b border-slate-50 last:border-0"
+                      data-tip={`${item.name}: ${item.count}`}
                     >
                       <span
                         className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold shrink-0 ${
@@ -598,11 +633,11 @@ export default function Dashboard({
           </div>
 
           {/* Top 5 Chief Complaints */}
-          <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex flex-col min-h-0 overflow-hidden h-full">
-            <h3 className="font-semibold text-slate-800 text-[12px] shrink-0 mb-1.5">
+          <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm p-2.5 flex flex-col min-h-0 overflow-hidden h-full">
+            <h3 className="font-semibold text-slate-800 text-[12px] shrink-0 mb-1">
               Top 5 Chief Complaints
             </h3>
-            <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="flex-1 overflow-hidden min-h-0">
               {topComplaints.length === 0 ? (
                 <p className="text-center text-slate-400 py-4 text-[11px]">No data yet</p>
               ) : (
@@ -612,7 +647,8 @@ export default function Dashboard({
                   return (
                     <div
                       key={item.name}
-                      className="flex items-center gap-2 py-1.5 border-b border-slate-50 last:border-0"
+                      className="dash-row dash-tip flex items-center gap-2 py-1.5 px-1 -mx-1 rounded border-b border-slate-50 last:border-0"
+                      data-tip={`${item.name}: ${item.count}`}
                     >
                       <span
                         className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold shrink-0 ${

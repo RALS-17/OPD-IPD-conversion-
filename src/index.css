@@ -30,6 +30,52 @@
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
   }
+
+  /* Dashboard: instant hover feedback (no delay) */
+  .dash-card {
+    @apply transition-[border-color,box-shadow,transform] duration-100 ease-out cursor-default;
+  }
+  .dash-card:hover {
+    @apply border-slate-300 shadow-md;
+  }
+  .dash-row {
+    @apply transition-colors duration-75 ease-out cursor-default;
+  }
+  .dash-row:hover {
+    background-color: rgb(241 245 249); /* slate-100 */
+  }
+  html.dark .dash-row:hover {
+    background-color: rgb(30 41 59); /* slate-800 */
+  }
+
+  /* Instant CSS tooltip — appears on hover with no delay */
+  .dash-tip {
+    position: relative;
+  }
+  .dash-tip::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%) translateY(2px);
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgb(15 23 42);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 50;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: opacity 40ms linear, transform 40ms linear;
+  }
+  .dash-tip:hover::after,
+  .dash-tip:focus-visible::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 /* Dark mode surfaces for existing white cards */
