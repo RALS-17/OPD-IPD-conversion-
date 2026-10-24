@@ -1,4 +1,4 @@
-/** Open a print-friendly dashboard snapshot (browser Print → Save as PDF). */
+/** Print-friendly dashboard snapshot via hidden iframe (no pop-up needed). */
 
 export interface PrintDashboardPayload {
   hospitalName: string;
@@ -37,7 +37,15 @@ function deltaHtml(cur: number, prev: number | undefined, suffix = ''): string {
   return `<span style="color:${color};font-size:11px;font-weight:600;margin-left:6px">${sign}${d}${suffix}</span>`;
 }
 
-export function printDashboardSnapshot(p: PrintDashboardPayload): void {
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildHtml(p: PrintDashboardPayload): string {
   const rows = p.topPhysicians
     .map(
       (r, i) => `
@@ -60,7 +68,8 @@ export function printDashboardSnapshot(p: PrintDashboardPayload): void {
     .join('');
 
   const prev = p.prevKpis;
-  const html = `<!DOCTYPE html>
+
+  return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
@@ -80,7 +89,7 @@ export function printDashboardSnapshot(p: PrintDashboardPayload): void {
     th { background: #f8fafc; color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.02em; }
     @media print {
       body { margin: 12px; }
-      .no-print { display: none; }
+      @page { margin: 12mm; }
     }
   </style>
 </head>
@@ -132,25 +141,71 @@ export function printDashboardSnapshot(p: PrintDashboardPayload): void {
     <tbody>${dx || '<tr><td colspan="3">No data</td></tr>'}</tbody>
   </table>
 
-  <p class="meta" style="margin-top:24px">Confidential · For internal meeting use · Print or Save as PDF from the browser dialog.</p>
-  <script>window.onload = function () { window.print(); };</script>
+  <p class="meta" style="margin-top:24px">Confidential · For internal meeting use · Use Print → Save as PDF.</p>
 </body>
 </html>`;
-
-  const w = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
-  if (!w) {
-    alert('Pop-up blocked. Allow pop-ups to print the dashboard snapshot.');
-    return;
-  }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
 }
 
-function escapeHtml(s: string): string {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+export function printDashboardSnapshot(p: PrintDashboardPayload): void {
+  const html = buildHtml(p);
+
+  // Prefer hidden iframe — not blocked as a pop-up
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('title', 'Print dashboard');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
+  document.body.appendChild(iframe);
+
+  const win = iframe.contentWindow;
+  const doc = iframe.contentDocument || win?.document;
+  if (!win || !doc) {
+    document.body.removeChild(iframe);
+    // Last resort: same-tab blob (still no pop-up permission needed for download-style)
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    return;
+  }
+
+  const cleanup = () => {
+    try {
+      document.body.removeChild(iframe);
+    } catch {
+      /* already removed */
+    }
+  };
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  // Wait a tick so layout is ready, then print
+  const triggerPrint = () => {
+    try {
+      win.focus();
+      win.print();
+    } finally {
+      // Remove iframe after print dialog closes (or after a delay if afterprint unsupported)
+      const remove = () => cleanup();
+      win.addEventListener('afterprint', remove, { once: true });
+      setTimeout(remove, 60_000);
+    }
+  };
+
+  if (doc.readyState === 'complete') {
+    setTimeout(triggerPrint, 50);
+  } else {
+    iframe.onload = () => setTimeout(triggerPrint, 50);
+  }
 }
