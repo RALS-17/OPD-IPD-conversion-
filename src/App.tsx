@@ -146,7 +146,6 @@ export default function App() {
     getKpis,
     getMix,
     getTopDiagnoses,
-    getTopComplaints,
     getMonthlyTrend,
     setAuditActor,
     loaded: admissionsLoaded,
