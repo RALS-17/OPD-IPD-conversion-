@@ -783,7 +783,7 @@ export default function Dashboard({
               ))}
             </select>
           </div>
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
             {rankedDiagnoses.length === 0 ? (
               <div className="text-center py-6 px-2">
                 <p className="text-[11px] font-medium text-slate-600">No diagnoses yet</p>
@@ -800,7 +800,7 @@ export default function Dashboard({
                 return (
                   <div
                     key={item.name}
-                    className="dash-row dash-tip flex items-center gap-2 py-1.5 px-1 -mx-1 rounded border-b border-slate-50 last:border-0"
+                    className="dash-row dash-tip flex items-center gap-1.5 py-1 px-0.5 rounded border-b border-slate-50 last:border-0 min-h-0 flex-1"
                     data-tip={`${item.name}: ${item.count}`}
                   >
                     <span
