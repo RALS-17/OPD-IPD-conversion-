@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X, Save } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { X, Save, ChevronDown, Search } from 'lucide-react';
 import type {
   Admission,
   OldNew,
@@ -15,6 +15,7 @@ interface AdmissionFormProps {
   onSave: (data: Omit<Admission, 'id' | 'createdAt'>) => void;
   initialData?: Admission | null;
   physicians: string[];
+  departmentByName?: Record<string, string>;
 }
 
 const emptyForm = {
@@ -35,12 +36,162 @@ const emptyForm = {
   remarks: '',
 };
 
+/** Searchable physician picker with optional department filter */
+function PhysicianPicker({
+  value,
+  onChange,
+  physicians,
+  departmentByName = {},
+  fieldClass,
+  labelClass,
+  label,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+  physicians: string[];
+  departmentByName?: Record<string, string>;
+  fieldClass: string;
+  labelClass: string;
+  label: string;
+}) {
+  const [dept, setDept] = useState('All');
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const departments = useMemo(() => {
+    const set = new Set<string>();
+    physicians.forEach((p) => {
+      const d = (departmentByName[p] || '').trim();
+      if (d) set.add(d);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [physicians, departmentByName]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return physicians
+      .filter((p) => {
+        if (dept !== 'All') {
+          const d = (departmentByName[p] || '').trim();
+          if (d !== dept) return false;
+        }
+        if (q && !p.toLowerCase().includes(q)) return false;
+        return true;
+      })
+      .slice(0, 80);
+  }, [physicians, departmentByName, dept, query]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  // When value is set externally and picker is closed, show it in the input area
+  const displayValue = open ? query : value;
+
+  return (
+    <div ref={wrapRef} className="space-y-1.5">
+      <div>
+        <label className={labelClass}>Department</label>
+        <select
+          value={dept}
+          onChange={(e) => {
+            setDept(e.target.value);
+            setOpen(true);
+            // If current value is outside new dept, clear selection
+            if (e.target.value !== 'All' && value) {
+              const d = (departmentByName[value] || '').trim();
+              if (d && d !== e.target.value) onChange('');
+            }
+          }}
+          className={fieldClass}
+        >
+          <option value="All">All departments</option>
+          {departments.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="relative">
+        <label className={labelClass}>{label}</label>
+        <div className="relative">
+          <Search
+            size={12}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+          />
+          <input
+            type="text"
+            value={displayValue}
+            placeholder={value ? value : 'Type name to search…'}
+            onFocus={() => {
+              setOpen(true);
+              setQuery('');
+            }}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+              if (!e.target.value) onChange('');
+            }}
+            className={`${fieldClass} pl-7 pr-7`}
+            autoComplete="off"
+          />
+          <ChevronDown
+            size={13}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+          />
+        </div>
+        {open && (
+          <div className="absolute z-20 left-0 right-0 mt-0.5 max-h-44 overflow-y-auto bg-white border border-slate-200 rounded-md shadow-lg">
+            {filtered.length === 0 ? (
+              <p className="px-2.5 py-2 text-[11px] text-slate-400">No matching physicians</p>
+            ) : (
+              filtered.map((p) => {
+                const d = (departmentByName[p] || '').trim();
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => {
+                      onChange(p);
+                      setQuery('');
+                      setOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 text-[11.5px] hover:bg-blue-50 ${
+                      p === value ? 'bg-blue-50 text-[#1348f3] font-semibold' : 'text-slate-700'
+                    }`}
+                  >
+                    <span className="block truncate">{p}</span>
+                    {d && (
+                      <span className="block text-[9.5px] text-slate-400 truncate">{d}</span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdmissionForm({
   isOpen,
   onClose,
   onSave,
   initialData,
   physicians,
+  departmentByName = {},
 }: AdmissionFormProps) {
   const [form, setForm] = useState(emptyForm);
 
@@ -64,7 +215,11 @@ export default function AdmissionForm({
         remarks: initialData.remarks,
       });
     } else {
-      setForm(emptyForm);
+      setForm({
+        ...emptyForm,
+        dateOfAdmission: new Date().toISOString().split('T')[0],
+        timeOfAdmission: new Date().toTimeString().slice(0, 5),
+      });
     }
   }, [initialData, isOpen]);
 
@@ -122,7 +277,7 @@ export default function AdmissionForm({
                   onChange={handleChange}
                   className={field}
                   placeholder="Enter patient name"
-                  maxLength={100}
+                  maxLength={120}
                 />
               </div>
 
@@ -172,8 +327,8 @@ export default function AdmissionForm({
                 <div>
                   <label className={labelCls}>Source of Admission</label>
                   <select name="source" value={form.source} onChange={handleChange} className={field}>
-                    <option value="ER">ER</option>
                     <option value="OPD">OPD</option>
+                    <option value="ER">ER</option>
                     <option value="Direct">Direct</option>
                   </select>
                 </div>
@@ -187,7 +342,7 @@ export default function AdmissionForm({
                   onChange={handleChange}
                   className={field}
                   placeholder="Enter chief complaint"
-                  maxLength={150}
+                  maxLength={200}
                 />
               </div>
 
@@ -199,7 +354,7 @@ export default function AdmissionForm({
                   onChange={handleChange}
                   className={field}
                   placeholder="Enter diagnosis"
-                  maxLength={150}
+                  maxLength={200}
                 />
               </div>
             </div>
@@ -232,22 +387,15 @@ export default function AdmissionForm({
                 </div>
               </div>
 
-              <div>
-                <label className={labelCls}>OPD Attending Physician</label>
-                <select
-                  name="opdAttendingPhysician"
-                  value={form.opdAttendingPhysician}
-                  onChange={handleChange}
-                  className={field}
-                >
-                  <option value="">Select physician</option>
-                  {physicians.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <PhysicianPicker
+                label="OPD Attending Physician"
+                value={form.opdAttendingPhysician}
+                onChange={(name) => setForm((p) => ({ ...p, opdAttendingPhysician: name }))}
+                physicians={physicians}
+                departmentByName={departmentByName}
+                fieldClass={field}
+                labelClass={labelCls}
+              />
 
               <div className="flex items-center justify-between py-0.5">
                 <label className="text-[11px] font-medium text-slate-600">Actually Admitted</label>
@@ -299,22 +447,15 @@ export default function AdmissionForm({
                 </div>
               </div>
 
-              <div>
-                <label className={labelCls}>Admitting Physician</label>
-                <select
-                  name="admittingPhysician"
-                  value={form.admittingPhysician}
-                  onChange={handleChange}
-                  className={field}
-                >
-                  <option value="">Select physician</option>
-                  {physicians.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <PhysicianPicker
+                label="Admitting Physician"
+                value={form.admittingPhysician}
+                onChange={(name) => setForm((p) => ({ ...p, admittingPhysician: name }))}
+                physicians={physicians}
+                departmentByName={departmentByName}
+                fieldClass={field}
+                labelClass={labelCls}
+              />
 
               <div>
                 <label className={labelCls}>Remarks (HAMA/THOC)</label>

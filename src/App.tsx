@@ -416,6 +416,7 @@ export default function App() {
                 onUpdate={updateAdmission}
                 onDelete={deleteAdmission}
                 physicians={physicianNames}
+                departmentByName={departmentByName}
                 isDoctor={isDoctor}
                 physicianName={physicianName}
               />

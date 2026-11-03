@@ -33,6 +33,7 @@ interface AdmissionLogProps {
   onUpdate: (id: string, data: Partial<Admission>) => void | Promise<void>;
   onDelete: (id: string) => void | Promise<void>;
   physicians: string[];
+  departmentByName?: Record<string, string>;
   isDoctor?: boolean;
   physicianName?: string | null;
 }
@@ -117,6 +118,7 @@ export default function AdmissionLog({
   onUpdate,
   onDelete,
   physicians,
+  departmentByName = {},
   isDoctor = false,
   physicianName = null,
 }: AdmissionLogProps) {
@@ -775,6 +777,7 @@ export default function AdmissionLog({
         onSave={handleSave}
         initialData={editing}
         physicians={physicians}
+        departmentByName={departmentByName}
       />
     </div>
   );
