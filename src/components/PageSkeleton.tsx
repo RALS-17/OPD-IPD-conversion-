@@ -29,68 +29,100 @@ function KpiCardSkeleton() {
 
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-2.5 h-full overflow-hidden">
-      <div className="grid grid-cols-4 gap-2.5 shrink-0">
+    <div className="flex flex-col gap-1.5 h-full overflow-hidden">
+      {/* Date filters + actions */}
+      <div className="shrink-0 flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Bone key={i} className="h-7 w-16" />
+          ))}
+          <Bone className="h-3 w-16 ml-1" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Bone className="h-7 w-20" />
+          <Bone className="h-7 w-28" />
+        </div>
+      </div>
+
+      {/* Top KPIs: From OPD · Actual Admissions · Conversion (3) */}
+      <div className="grid grid-cols-3 gap-1.5 shrink-0">
+        {[0, 1, 2].map((i) => (
+          <KpiCardSkeleton key={i} />
+        ))}
+      </div>
+
+      {/* Mix: HMO · CASH · Private · Walk-in (4) */}
+      <div className="grid grid-cols-4 gap-1.5 shrink-0">
         {[0, 1, 2, 3].map((i) => (
           <KpiCardSkeleton key={i} />
         ))}
       </div>
-      <div className="grid grid-cols-4 gap-2.5 shrink-0">
-        {[0, 1, 2, 3].map((i) => (
-          <KpiCardSkeleton key={i} />
-        ))}
-      </div>
-      <div className="flex-1 min-h-0 grid grid-cols-3 gap-2.5">
-        <div className="col-span-2 flex flex-col gap-2.5 min-h-0">
+
+      {/* Main: left (gauge+chart / physicians) | right (top 10 diagnoses) */}
+      <div className="flex-1 min-h-0 grid grid-cols-3 gap-1.5 items-stretch">
+        <div className="col-span-2 grid grid-rows-2 gap-1.5 min-h-0">
           <div
-            className="grid gap-2.5 shrink-0"
-            style={{ height: '48%', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)' }}
+            className="grid min-h-0 gap-1.5"
+            style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)' }}
           >
-            <div className={`${card} p-3 flex flex-col`}>
-              <Bone className="h-3 w-40 mb-3" />
-              <div className="flex-1 flex items-center justify-center">
-                <Bone className="w-36 h-20 rounded-full" />
+            {/* Gauge */}
+            <div className={`${card} p-2.5 flex flex-col min-h-0`}>
+              <div className="flex justify-between mb-2">
+                <Bone className="h-3 w-32" />
+                <div className="flex gap-1">
+                  <Bone className="h-5 w-8" />
+                  <Bone className="h-5 w-8" />
+                </div>
               </div>
-              <Bone className="h-2.5 w-28 mx-auto mt-2" />
+              <div className="flex-1 flex items-center justify-center">
+                <Bone className="w-32 h-16 rounded-full" />
+              </div>
+              <Bone className="h-2.5 w-36 mx-auto mt-2" />
             </div>
-            <div className={`${card} p-3 flex flex-col`}>
+            {/* Trend */}
+            <div className={`${card} p-2.5 flex flex-col min-h-0`}>
               <div className="flex justify-between mb-2">
                 <Bone className="h-3 w-44" />
-                <Bone className="h-5 w-16" />
+                <Bone className="h-4 w-20" />
               </div>
-              <Bone className="flex-1 w-full min-h-[80px]" />
+              <Bone className="flex-1 w-full min-h-[60px]" />
             </div>
           </div>
-          <div className={`${card} flex-1 min-h-0 p-3 flex flex-col`}>
-            <Bone className="h-3 w-52 mb-3 shrink-0" />
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex items-center gap-2 py-2 border-b border-slate-50">
-                <Bone className="h-4 w-6" />
-                <Bone className="h-4 flex-1" />
-                <Bone className="h-4 w-16" />
-                <Bone className="h-4 w-12" />
-              </div>
-            ))}
+          {/* Physicians table */}
+          <div className={`${card} min-h-0 p-0 flex flex-col overflow-hidden`}>
+            <div className="px-3 py-1.5 border-b border-slate-100 flex justify-between">
+              <Bone className="h-3 w-48" />
+              <Bone className="h-2.5 w-28" />
+            </div>
+            <div className="flex-1 p-2">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center gap-2 py-1.5 border-b border-slate-50">
+                  <Bone className="h-5 w-5" />
+                  <Bone className="h-4 flex-1" />
+                  <Bone className="h-4 w-16" />
+                  <Bone className="h-4 w-10" />
+                  <Bone className="h-4 w-12" />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="flex flex-col gap-2.5 min-h-0">
-          <div className={`${card} p-3 flex-1 min-h-0`}>
-            <Bone className="h-3 w-28 mb-3" />
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex items-center gap-2 py-1.5">
-                <Bone className="h-5 w-5" />
-                <Bone className="h-3 flex-1" />
-                <Bone className="h-3 w-6" />
-              </div>
-            ))}
+
+        {/* Top 10 Diagnoses (full height, with dept filter) */}
+        <div className={`${card} p-2.5 flex flex-col min-h-0 h-full`}>
+          <div className="flex items-center justify-between mb-2 shrink-0">
+            <Bone className="h-3 w-28" />
+            <Bone className="h-5 w-24" />
           </div>
-          <div className={`${card} p-3 flex-1 min-h-0`}>
-            <Bone className="h-3 w-36 mb-3" />
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex items-center gap-2 py-1.5">
-                <Bone className="h-5 w-5" />
-                <Bone className="h-3 flex-1" />
-                <Bone className="h-3 w-6" />
+          <div className="flex-1 min-h-0 space-y-0">
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
+              <div key={i} className="flex items-center gap-2 py-1.5 border-b border-slate-50 last:border-0">
+                <Bone className="h-5 w-5 shrink-0" />
+                <div className="flex-1 space-y-1 min-w-0">
+                  <Bone className="h-2.5 w-full max-w-[140px]" />
+                  <Bone className="h-1 w-full" />
+                </div>
+                <Bone className="h-3 w-5 shrink-0" />
               </div>
             ))}
           </div>
