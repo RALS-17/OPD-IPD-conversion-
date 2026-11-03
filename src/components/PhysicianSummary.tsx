@@ -1,4 +1,12 @@
+import { useMemo, useState } from 'react';
+import { Pencil, Check, X } from 'lucide-react';
 import type { PhysicianStats } from '../types';
+import {
+  applyOpdConsultOverrides,
+  loadOpdConsultOverrides,
+  setOpdConsultOverride,
+  type OpdConsultOverrides,
+} from '../lib/opdConsultOverrides';
 
 interface PhysicianSummaryProps {
   stats: PhysicianStats[];
@@ -6,6 +14,10 @@ interface PhysicianSummaryProps {
   averageThreshold: number;
   departmentByName?: Record<string, string>;
   onPhysicianClick?: (name: string) => void;
+  /** When overrides change (so Dashboard can stay in sync if needed) */
+  onOpdOverridesChange?: (map: OpdConsultOverrides) => void;
+  /** Controlled overrides from parent; if omitted, loads from localStorage */
+  opdOverrides?: OpdConsultOverrides;
 }
 
 export default function PhysicianSummary({
@@ -13,19 +25,60 @@ export default function PhysicianSummary({
   goodThreshold,
   averageThreshold,
   onPhysicianClick,
+  onOpdOverridesChange,
+  opdOverrides: controlledOverrides,
 }: PhysicianSummaryProps) {
+  const [localOverrides, setLocalOverrides] = useState<OpdConsultOverrides>(() =>
+    loadOpdConsultOverrides()
+  );
+  const overrides = controlledOverrides ?? localOverrides;
+
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+
+  const displayStats = useMemo(
+    () => applyOpdConsultOverrides(stats, overrides),
+    [stats, overrides]
+  );
+
   const avgConversion =
-    stats.length > 0
+    displayStats.length > 0
       ? Math.round(
-          (stats.reduce((sum, s) => sum + s.conversionRate, 0) / stats.length) * 10
+          (displayStats.reduce((sum, s) => sum + s.conversionRate, 0) / displayStats.length) *
+            10
         ) / 10
       : 0;
 
-  const topPerformer = stats[0];
+  const topPerformer = displayStats[0];
+
+  const commitOverrides = (next: OpdConsultOverrides) => {
+    if (controlledOverrides === undefined) setLocalOverrides(next);
+    onOpdOverridesChange?.(next);
+  };
+
+  const startEdit = (physician: string, current: number) => {
+    setEditing(physician);
+    setEditValue(String(current));
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setEditValue('');
+  };
+
+  const saveEdit = (physician: string) => {
+    const n = Number(editValue);
+    if (!Number.isFinite(n) || n < 0) {
+      cancelEdit();
+      return;
+    }
+    const next = setOpdConsultOverride(overrides, physician, n);
+    commitOverrides(next);
+    cancelEdit();
+  };
 
   return (
     <div className="flex flex-col gap-2.5 h-full min-h-0">
-      {/* Header - compact */}
       <div className="shrink-0">
         <h1 className="text-[16px] font-bold text-slate-900 leading-none">
           Monthly Physician Performance
@@ -35,7 +88,6 @@ export default function PhysicianSummary({
         </p>
       </div>
 
-      {/* Summary cards - compact */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 shrink-0">
         <div className="bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5">
           <p className="text-[11px] font-medium text-slate-500">Average Conversion Rate</p>
@@ -49,7 +101,7 @@ export default function PhysicianSummary({
             />
           </div>
           <p className="text-[10px] text-slate-400 mt-1.5">
-            Across {stats.length} physicians
+            Across {displayStats.length} physicians
           </p>
         </div>
 
@@ -83,7 +135,6 @@ export default function PhysicianSummary({
         </div>
       </div>
 
-      {/* Table - compact */}
       <div className="bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
         <div className="overflow-auto flex-1">
           <table className="w-full text-[11.5px]">
@@ -108,87 +159,135 @@ export default function PhysicianSummary({
               </tr>
             </thead>
             <tbody>
-              {stats.length === 0 ? (
+              {displayStats.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-3 py-10 text-center text-slate-400 text-[12px]">
                     No physician data available
                   </td>
                 </tr>
               ) : (
-                stats.map((s) => (
-                  <tr
-                    key={s.physician}
-                    className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
-                  >
-                    <td className="px-3 py-1.5">
-                      <button
-                        type="button"
-                        onClick={() => onPhysicianClick?.(s.physician)}
-                        className="flex items-center gap-1.5 text-left group"
-                        title="View physician details"
-                      >
-                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-[8px] font-bold text-blue-700 shrink-0">
-                          {s.physician
-                            .replace('Dr. ', '')
-                            .split(' ')
-                            .map((n) => n[0])
-                            .join('')
-                            .slice(0, 2)}
-                        </div>
-                        <span className="font-medium text-slate-800 group-hover:text-[#1348f3] group-hover:underline">
-                          {s.physician}
-                        </span>
-                      </button>
-                    </td>
-                    <td className="px-2 py-1.5 text-right text-slate-600">
-                      {s.totalOpdConsults}
-                    </td>
-                    <td className="px-2 py-1.5 text-right text-slate-600">
-                      {s.opdAdvisedAdmission}
-                    </td>
-                    <td className="px-2 py-1.5 text-right text-slate-600">
-                      {s.actualAdmissionsFromOpd}
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <div className="w-14 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              s.conversionRate >= goodThreshold
-                                ? 'bg-emerald-500'
-                                : s.conversionRate >= averageThreshold
-                                ? 'bg-amber-400'
-                                : 'bg-red-400'
-                            }`}
-                            style={{
-                              width: `${Math.min(s.conversionRate, 100)}%`,
-                            }}
-                          />
-                        </div>
-                        <span
-                          className={`font-semibold min-w-[40px] text-right ${
-                            s.conversionRate >= goodThreshold
-                              ? 'text-emerald-600'
-                              : s.conversionRate >= averageThreshold
-                              ? 'text-amber-600'
-                              : 'text-red-500'
-                          }`}
+                displayStats.map((s) => {
+                  const isEditing = editing === s.physician;
+                  return (
+                    <tr
+                      key={s.physician}
+                      className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
+                    >
+                      <td className="px-3 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onPhysicianClick?.(s.physician)}
+                          className="flex items-center gap-1.5 text-left group"
+                          title="View physician details"
                         >
-                          {s.conversionRate}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-2 py-1.5 text-right text-slate-600">
-                      {s.totalAdmissions}
-                    </td>
-                  </tr>
-                ))
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-[8px] font-bold text-blue-700 shrink-0">
+                            {s.physician
+                              .replace('Dr. ', '')
+                              .split(' ')
+                              .map((n) => n[0])
+                              .join('')
+                              .slice(0, 2)}
+                          </div>
+                          <span className="font-medium text-slate-800 group-hover:text-[#1348f3] group-hover:underline">
+                            {s.physician}
+                          </span>
+                        </button>
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        {isEditing ? (
+                          <div className="inline-flex items-center justify-end gap-0.5">
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveEdit(s.physician);
+                                if (e.key === 'Escape') cancelEdit();
+                              }}
+                              className="w-16 text-right text-[11px] border border-[#1348f3] rounded px-1 py-0.5 focus:outline-none"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => saveEdit(s.physician)}
+                              className="p-0.5 text-emerald-600 hover:bg-emerald-50 rounded"
+                              title="Save"
+                            >
+                              <Check size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEdit}
+                              className="p-0.5 text-slate-400 hover:bg-slate-100 rounded"
+                              title="Cancel"
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center justify-end gap-1">
+                            <span className="tabular-nums text-slate-600">
+                              {s.totalOpdConsults}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => startEdit(s.physician, s.totalOpdConsults)}
+                              className="p-0.5 text-slate-400 hover:text-[#1348f3] hover:bg-blue-50 rounded"
+                              title="Edit Total OPD Consults"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 text-right text-slate-600">
+                        {s.opdAdvisedAdmission}
+                      </td>
+                      <td className="px-2 py-1.5 text-right text-slate-600">
+                        {s.actualAdmissionsFromOpd}
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <div className="w-14 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                s.conversionRate >= goodThreshold
+                                  ? 'bg-emerald-500'
+                                  : s.conversionRate >= averageThreshold
+                                    ? 'bg-amber-400'
+                                    : 'bg-red-400'
+                              }`}
+                              style={{
+                                width: `${Math.min(s.conversionRate, 100)}%`,
+                              }}
+                            />
+                          </div>
+                          <span
+                            className={`font-semibold min-w-[40px] text-right ${
+                              s.conversionRate >= goodThreshold
+                                ? 'text-emerald-600'
+                                : s.conversionRate >= averageThreshold
+                                  ? 'text-amber-600'
+                                  : 'text-red-500'
+                            }`}
+                          >
+                            {s.conversionRate}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-2 py-1.5 text-right text-slate-600">
+                        {s.totalAdmissions}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Legend - compact */}
         <div className="px-3 py-1.5 border-t border-slate-100 flex flex-wrap items-center gap-3 text-[10px] text-slate-500 shrink-0">
           <span className="font-semibold text-slate-600">Conversion Rate:</span>
           <span className="flex items-center gap-1">
@@ -197,21 +296,14 @@ export default function PhysicianSummary({
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-amber-400" />
-            {`${averageThreshold}–${goodThreshold}% Average`}
+            {`${averageThreshold}–${goodThreshold - 0.1}% Average`}
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-red-400" />
             {`< ${averageThreshold}% Needs Improvement`}
           </span>
+          <span className="text-slate-400">· Pencil = edit Total OPD Consults</span>
         </div>
-      </div>
-
-      {/* Formula note - compact */}
-      <div className="bg-blue-50/80 border border-blue-100 rounded-md px-3 py-2 shrink-0">
-        <p className="text-[11px] text-slate-700">
-          <span className="font-semibold text-[#1348f3]">Conversion Rate Formula:</span>{' '}
-          (Actual OPD Admissions ÷ Total OPD Consultations) × 100
-        </p>
       </div>
     </div>
   );

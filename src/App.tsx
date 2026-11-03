@@ -24,6 +24,11 @@ import NotificationBell from './components/NotificationBell';
 import { buildNotifications } from './lib/notifications';
 import PhysicianDetail from './components/PhysicianDetail';
 import { printDashboardSnapshot } from './lib/printDashboard';
+import {
+  applyOpdConsultOverrides,
+  loadOpdConsultOverrides,
+  type OpdConsultOverrides,
+} from './lib/opdConsultOverrides';
 
 
 const PAGE_PATH: Record<Page, string> = {
@@ -89,6 +94,9 @@ export default function App() {
   const [dateFrom, setDateFrom] = useState(() => rangeForPreset('month')?.from || '');
   const [dateTo, setDateTo] = useState(() => rangeForPreset('month')?.to || '');
   const [drillPhysician, setDrillPhysician] = useState<string | null>(null);
+  const [opdOverrides, setOpdOverrides] = useState<OpdConsultOverrides>(() =>
+    loadOpdConsultOverrides()
+  );
   const defaultPageSet = useRef(false);
 
   // Set default page once profile is known (admin → Dashboard)
@@ -242,10 +250,13 @@ export default function App() {
 
   const kpis = getKpis(filteredAdmissions);
   const mix = getMix(filteredAdmissions);
-  const physicianStats = getPhysicianStats(filteredAdmissions);
-  const topDiagnoses = getTopDiagnoses(filteredAdmissions);
-  const topComplaints = getTopComplaints(filteredAdmissions);
+  const physicianStats = applyOpdConsultOverrides(
+    getPhysicianStats(filteredAdmissions),
+    opdOverrides
+  );
+  const topDiagnoses = getTopDiagnoses(filteredAdmissions, 10);
   const monthlyTrend = getMonthlyTrend(filteredAdmissions);
+  const summaryPhysicianStats = getPhysicianStats(roleScopedAdmissions);
 
   const handleExportFiltered = () => {
     exportCsv(filteredAdmissions);
@@ -381,8 +392,6 @@ export default function App() {
                 mix={mix}
                 physicianStats={physicianStats}
                 departmentByName={departmentByName}
-                topDiagnoses={topDiagnoses}
-                topComplaints={topComplaints}
                 monthlyTrend={monthlyTrend}
                 prevMonthlyTrend={prevMonthlyTrend}
                 targetConversion={settings.targetConversion}
@@ -414,11 +423,13 @@ export default function App() {
             )}
             {currentPage === 'physician-summary' && (
               <PhysicianSummary
-                stats={getPhysicianStats(roleScopedAdmissions)}
+                stats={summaryPhysicianStats}
                 goodThreshold={settings.goodThreshold}
                 averageThreshold={settings.averageThreshold}
                 departmentByName={departmentByName}
                 onPhysicianClick={(name) => setDrillPhysician(name)}
+                opdOverrides={opdOverrides}
+                onOpdOverridesChange={setOpdOverrides}
               />
             )}
             {currentPage === 'physicians' && !isDoctor && (

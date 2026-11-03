@@ -536,7 +536,8 @@ export function useAdmissions() {
   );
 
   const getTopDiagnoses = useCallback(
-    (list?: Admission[]): RankedItem[] => rankField(list ?? admissions, 'diagnosis', 5),
+    (list?: Admission[], limit = 10): RankedItem[] =>
+      rankField(list ?? admissions, 'diagnosis', limit),
     [admissions]
   );
 

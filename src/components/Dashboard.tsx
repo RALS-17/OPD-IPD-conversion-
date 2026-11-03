@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Users,
-  ClipboardCheck,
   BedDouble,
   TrendingUp,
   ArrowUpRight,
@@ -45,8 +44,8 @@ interface DashboardProps {
   mix: MixStats;
   physicianStats: PhysicianStats[];
   departmentByName?: Record<string, string>;
-  topDiagnoses: RankedItem[];
-  topComplaints: RankedItem[];
+  /** Optional; diagnoses are computed from filteredAdmissions + department filter. */
+  topDiagnoses?: RankedItem[];
   monthlyTrend: MonthlyTrend;
   prevMonthlyTrend?: MonthlyTrend | null;
   targetConversion: number;
@@ -136,8 +135,6 @@ export default function Dashboard({
   mix,
   physicianStats,
   departmentByName = {},
-  topDiagnoses,
-  topComplaints,
   monthlyTrend,
   prevMonthlyTrend = null,
   targetConversion,
@@ -162,6 +159,45 @@ export default function Dashboard({
   const [gaugeSource, setGaugeSource] = useState<GaugeSource>('OPD');
   const [hoverPoint, setHoverPoint] = useState<{ day: number; value: number; x: number; y: number } | null>(null);
   const [showPrevTrend, setShowPrevTrend] = useState(true);
+  type ZoomSection = 'gauge' | 'trend' | 'physicians' | 'diagnoses';
+  const [zoomSection, setZoomSection] = useState<ZoomSection | null>(null);
+  const [diagDept, setDiagDept] = useState('All');
+
+  const departmentOptions = useMemo(() => {
+    const set = new Set<string>();
+    Object.values(departmentByName).forEach((d) => {
+      if (d?.trim()) set.add(d.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [departmentByName]);
+
+  const rankedDiagnoses = useMemo(() => {
+    let list = filteredAdmissions;
+    if (diagDept !== 'All') {
+      list = list.filter(
+        (a) => (departmentByName[a.opdAttendingPhysician] || '').trim() === diagDept
+      );
+    }
+    const map = new Map<string, number>();
+    list.forEach((a) => {
+      const d = (a.diagnosis || '').trim();
+      if (!d) return;
+      map.set(d, (map.get(d) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [filteredAdmissions, diagDept, departmentByName]);
+
+  useEffect(() => {
+    if (!zoomSection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setZoomSection(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [zoomSection]);
 
   const gaugeStats = useMemo(() => {
     const list = filteredAdmissions.filter(
@@ -271,23 +307,15 @@ export default function Dashboard({
           </button>
         </div>
       </div>
-      {/* KPI row - main metrics */}
-      <div className="grid grid-cols-4 gap-1.5 shrink-0">
+      {/* KPI row - main metrics (3 cards; Advised removed) */}
+      <div className="grid grid-cols-3 gap-1.5 shrink-0">
         {[
           {
             icon: Users,
             color: 'bg-blue-50 text-[#1348f3]',
-            label: 'Total OPD Consults',
+            label: 'From OPD',
             value: kpis.totalOpd,
             prev: prevKpis?.totalOpd,
-            suffix: '',
-          },
-          {
-            icon: ClipboardCheck,
-            color: 'bg-emerald-50 text-[#0d9f6e]',
-            label: 'Advised for Admission',
-            value: kpis.advised,
-            prev: prevKpis?.advised,
             suffix: '',
           },
           {
@@ -411,7 +439,11 @@ export default function Dashboard({
             {/* Conversion gauge */}
             <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm p-2.5 flex flex-col overflow-hidden min-h-0 h-full">
               <div className="flex items-center justify-between shrink-0 gap-1">
-                <h3 className="font-semibold text-slate-800 text-[12px] truncate">
+                <h3
+                  className="font-semibold text-slate-800 text-[12px] truncate cursor-zoom-in select-none hover:text-[#1348f3]"
+                  title="Double-click to enlarge"
+                  onDoubleClick={() => setZoomSection('gauge')}
+                >
                   {gaugeSource === 'OPD' ? 'OPD → IPD' : 'ER → IPD'} Conversion
                 </h3>
                 <div className="flex items-center gap-0.5 shrink-0">
@@ -469,7 +501,13 @@ export default function Dashboard({
             {/* Trend chart — line and dots share the same SVG coordinates */}
             <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm p-2.5 flex flex-col overflow-hidden min-h-0 h-full">
               <div className="flex items-center justify-between shrink-0 mb-1 gap-2">
-                <h3 className="font-semibold text-slate-800 text-[12px]">Monthly Conversion Rate Trend</h3>
+                <h3
+                  className="font-semibold text-slate-800 text-[12px] cursor-zoom-in select-none hover:text-[#1348f3]"
+                  title="Double-click to enlarge"
+                  onDoubleClick={() => setZoomSection('trend')}
+                >
+                  Monthly Conversion Rate Trend
+                </h3>
                 {prevPoints.length > 0 && (
                   <label className="inline-flex items-center gap-1 text-[9.5px] text-slate-500 cursor-pointer select-none">
                     <input
@@ -618,7 +656,11 @@ export default function Dashboard({
             <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs">🏆</span>
-                <h3 className="font-semibold text-slate-800 text-[12px]">
+                <h3
+                  className="font-semibold text-slate-800 text-[12px] cursor-zoom-in select-none hover:text-[#1348f3]"
+                  title="Double-click to enlarge"
+                  onDoubleClick={() => setZoomSection('physicians')}
+                >
                   Top 5 Physicians by Conversion Rate
                 </h3>
               </div>
@@ -717,107 +759,411 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* RIGHT 1/3: diagnoses on top, complaints below — equal height, aligned to left */}
-        <div className="grid grid-rows-2 gap-1.5 min-h-0 h-full">
-          {/* Top 5 Diagnoses */}
-          <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm p-2.5 flex flex-col min-h-0 overflow-hidden h-full">
-            <h3 className="font-semibold text-slate-800 text-[12px] shrink-0 mb-1">
-              Top 5 Diagnoses
+        {/* RIGHT 1/3: Top 10 Diagnoses (full height) */}
+        <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm p-2.5 flex flex-col min-h-0 overflow-hidden h-full">
+          <div className="flex items-center justify-between gap-1.5 shrink-0 mb-1.5">
+            <h3
+              className="font-semibold text-slate-800 text-[12px] cursor-zoom-in select-none hover:text-[#1348f3] truncate"
+              title="Double-click to enlarge"
+              onDoubleClick={() => setZoomSection('diagnoses')}
+            >
+              Top 10 Diagnoses
             </h3>
-            <div className="flex-1 overflow-hidden min-h-0">
-              {topDiagnoses.length === 0 ? (
-                <div className="text-center py-4 px-2">
-                  <p className="text-[11px] font-medium text-slate-600">No diagnoses yet</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Fill diagnosis on admission rows.</p>
-                </div>
-              ) : (
-                topDiagnoses.map((item, idx) => {
-                  const max = topDiagnoses[0]?.count || 1;
-                  const pct = Math.round((item.count / max) * 100);
-                  return (
-                    <div
-                      key={item.name}
-                      className="dash-row dash-tip flex items-center gap-2 py-1.5 px-1 -mx-1 rounded border-b border-slate-50 last:border-0"
-                      data-tip={`${item.name}: ${item.count}`}
-                    >
-                      <span
-                        className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold shrink-0 ${
-                          idx === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {idx + 1}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-800 text-[11px] truncate leading-tight">
-                          {item.name}
-                        </p>
-                        <div className="mt-0.5 h-1 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-[#1348f3] rounded-full"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                      <span className="text-[11px] font-semibold text-slate-600 shrink-0">
-                        {item.count}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+            <select
+              value={diagDept}
+              onChange={(e) => setDiagDept(e.target.value)}
+              className="text-[10px] border border-slate-200 rounded-md px-1.5 py-0.5 text-slate-600 bg-white focus:outline-none max-w-[140px] shrink-0"
+              title="Filter by OPD physician department"
+            >
+              <option value="All">All depts</option>
+              {departmentOptions.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
           </div>
-
-          {/* Top 5 Chief Complaints */}
-          <div className="dash-card bg-white rounded-md border border-slate-200 shadow-sm p-2.5 flex flex-col min-h-0 overflow-hidden h-full">
-            <h3 className="font-semibold text-slate-800 text-[12px] shrink-0 mb-1">
-              Top 5 Chief Complaints
-            </h3>
-            <div className="flex-1 overflow-hidden min-h-0">
-              {topComplaints.length === 0 ? (
-                <div className="text-center py-4 px-2">
-                  <p className="text-[11px] font-medium text-slate-600">No chief complaints yet</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Fill chief complaint on admission rows.</p>
-                </div>
-              ) : (
-                topComplaints.map((item, idx) => {
-                  const max = topComplaints[0]?.count || 1;
-                  const pct = Math.round((item.count / max) * 100);
-                  return (
-                    <div
-                      key={item.name}
-                      className="dash-row dash-tip flex items-center gap-2 py-1.5 px-1 -mx-1 rounded border-b border-slate-50 last:border-0"
-                      data-tip={`${item.name}: ${item.count}`}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {rankedDiagnoses.length === 0 ? (
+              <div className="text-center py-6 px-2">
+                <p className="text-[11px] font-medium text-slate-600">No diagnoses yet</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  {diagDept === 'All'
+                    ? 'Fill diagnosis on admission rows.'
+                    : `No data for ${diagDept} in this period.`}
+                </p>
+              </div>
+            ) : (
+              rankedDiagnoses.map((item, idx) => {
+                const max = rankedDiagnoses[0]?.count || 1;
+                const pct = Math.round((item.count / max) * 100);
+                return (
+                  <div
+                    key={item.name}
+                    className="dash-row dash-tip flex items-center gap-2 py-1.5 px-1 -mx-1 rounded border-b border-slate-50 last:border-0"
+                    data-tip={`${item.name}: ${item.count}`}
+                  >
+                    <span
+                      className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold shrink-0 ${
+                        idx === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
+                      }`}
                     >
-                      <span
-                        className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold shrink-0 ${
-                          idx === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                      {idx + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-800 text-[11px] truncate leading-tight">
+                        {item.name}
+                      </p>
+                      <div className="mt-0.5 h-1 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#1348f3] rounded-full"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-600 shrink-0">
+                      {item.count}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Double-click zoom overlay (all charts except the 8 KPI cards) */}
+      {zoomSection && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-8">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px]"
+            aria-label="Close zoom"
+            onClick={() => setZoomSection(null)}
+          />
+          <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 shrink-0">
+              <h2 className="text-[15px] font-bold text-slate-900">
+                {zoomSection === 'gauge' &&
+                  `${gaugeSource === 'OPD' ? 'OPD → IPD' : 'ER → IPD'} Conversion`}
+                {zoomSection === 'trend' && 'Monthly Conversion Rate Trend'}
+                {zoomSection === 'physicians' && 'Top 5 Physicians by Conversion Rate'}
+                {zoomSection === 'diagnoses' &&
+                  `Top 10 Diagnoses${diagDept !== 'All' ? ` · ${diagDept}` : ''}`}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setZoomSection(null)}
+                className="px-2.5 py-1 text-[11px] font-semibold rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+              >
+                Close · Esc
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-6">
+              {zoomSection === 'gauge' && (
+                <div className="flex flex-col items-center justify-center min-h-[280px]">
+                  <div className="flex items-center gap-1 mb-3">
+                    {(['OPD', 'ER'] as const).map((src) => (
+                      <button
+                        key={src}
+                        type="button"
+                        onClick={() => setGaugeSource(src)}
+                        className={`px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors ${
+                          gaugeSource === src
+                            ? 'bg-[#1348f3] text-white border-[#1348f3]'
+                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
                         }`}
                       >
-                        {idx + 1}
+                        {src}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="relative w-full max-w-[360px] aspect-[2/1.1]">
+                    <svg viewBox="0 0 200 110" className="w-full h-full">
+                      <path
+                        d="M 15 100 A 85 85 0 0 1 185 100"
+                        fill="none"
+                        stroke="#e8eef7"
+                        strokeWidth="16"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M 15 100 A 85 85 0 0 1 185 100"
+                        fill="none"
+                        stroke="url(#g1z)"
+                        strokeWidth="16"
+                        strokeLinecap="round"
+                        strokeDasharray={`${(Math.min(gaugeStats.conversion, 100) / 100) * 267} 267`}
+                      />
+                      <defs>
+                        <linearGradient id="g1z" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#0d9f6e" />
+                          <stop offset="100%" stopColor="#34d399" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-end pb-2">
+                      <span className="text-[40px] font-bold text-slate-900 leading-none">
+                        {gaugeStats.conversion}%
                       </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-800 text-[11px] truncate leading-tight">
-                          {item.name}
-                        </p>
-                        <div className="mt-0.5 h-1 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-[#0d9f6e] rounded-full"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                      <span className="text-[11px] font-semibold text-slate-600 shrink-0">
-                        {item.count}
+                      <span className="text-[12px] text-slate-500 mt-1">
+                        {gaugeSource === 'OPD' ? 'OPD → IPD' : 'ER → IPD'} rate
                       </span>
                     </div>
-                  );
-                })
+                  </div>
+                  <p className="mt-3 text-[13px] font-medium text-slate-600">
+                    {gaugeStats.admitted} admitted / {gaugeStats.total} {gaugeSource} · {periodLabel}
+                  </p>
+                  <p className="mt-1 text-[12px] text-slate-500">
+                    Target: ≥ {targetConversion}% · Direct excluded
+                  </p>
+                </div>
+              )}
+
+              {zoomSection === 'trend' && (
+                <div className="flex flex-col min-h-[320px]">
+                  {prevPoints.length > 0 && (
+                    <label className="inline-flex items-center gap-1.5 text-[12px] text-slate-500 cursor-pointer select-none mb-2 self-end">
+                      <input
+                        type="checkbox"
+                        checked={showPrevTrend}
+                        onChange={(e) => setShowPrevTrend(e.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      {compareLabel || 'Prior period'}
+                    </label>
+                  )}
+                  <div className="flex-1 min-h-[280px] relative">
+                    {points.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-slate-400 text-[13px]">
+                        No conversion points yet
+                      </div>
+                    ) : (
+                      <svg
+                        viewBox={`0 0 ${chartW} ${chartH}`}
+                        className="w-full h-full"
+                        preserveAspectRatio="xMidYMid meet"
+                      >
+                        {yTicks.map((t) => (
+                          <g key={t}>
+                            <line
+                              x1={padL}
+                              y1={yForVal(t)}
+                              x2={chartW - padR}
+                              y2={yForVal(t)}
+                              stroke="#e2e8f0"
+                              strokeWidth="1"
+                            />
+                            <text
+                              x={padL - 6}
+                              y={yForVal(t) + 3}
+                              textAnchor="end"
+                              className="fill-slate-400"
+                              style={{ fontSize: 9 }}
+                            >
+                              {t}%
+                            </text>
+                          </g>
+                        ))}
+                        {xTicks.map((d) => (
+                          <text
+                            key={d}
+                            x={xForDay(d)}
+                            y={chartH - 8}
+                            textAnchor="middle"
+                            className="fill-slate-400"
+                            style={{ fontSize: 9 }}
+                          >
+                            {d} {d === 1 || d === daysInMonth ? monthLabel : ''}
+                          </text>
+                        ))}
+                        {showPrevTrend && prevPoints.length > 1 && (
+                          <polyline
+                            fill="none"
+                            stroke="#94a3b8"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeDasharray="4 3"
+                            points={prevLinePoints}
+                            opacity={0.85}
+                          />
+                        )}
+                        {points.length > 1 && (
+                          <polyline
+                            fill="none"
+                            stroke="#0d9f6e"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            points={linePoints}
+                          />
+                        )}
+                        {points.map((d) => (
+                          <circle
+                            key={d.day}
+                            cx={xForDay(d.day)}
+                            cy={yForVal(d.value)}
+                            r="5"
+                            fill="white"
+                            stroke="#0d9f6e"
+                            strokeWidth="2"
+                          >
+                            <title>{`Day ${d.day}: ${d.value}%`}</title>
+                          </circle>
+                        ))}
+                      </svg>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-500">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-4 h-0.5 bg-[#0d9f6e] rounded" /> Current
+                    </span>
+                    {showPrevTrend && prevPoints.length > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="w-4 h-0.5 bg-slate-400 rounded" /> Prior
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {zoomSection === 'physicians' && (
+                <div className="overflow-auto">
+                  <p className="text-[12px] text-slate-500 mb-3">
+                    Ranked by conversion rate · {periodLabel}
+                  </p>
+                  <table className="w-full text-[13px]">
+                    <thead className="bg-slate-50">
+                      <tr className="text-left text-slate-500">
+                        <th className="px-3 py-2 font-medium text-[11px]">Rank</th>
+                        <th className="px-3 py-2 font-medium text-[11px]">Physician</th>
+                        <th className="px-3 py-2 font-medium text-[11px]">Department</th>
+                        <th className="px-3 py-2 font-medium text-[11px] text-right">OPD</th>
+                        <th className="px-3 py-2 font-medium text-[11px] text-right">Admissions</th>
+                        <th className="px-3 py-2 font-medium text-[11px] text-right">Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topPhysicians.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
+                            No physician stats yet
+                          </td>
+                        </tr>
+                      ) : (
+                        topPhysicians.map((p, idx) => (
+                          <tr key={p.physician} className="border-b border-slate-50">
+                            <td className="px-3 py-2.5">
+                              <span
+                                className={`inline-flex items-center justify-center w-6 h-6 rounded text-[11px] font-bold ${
+                                  idx === 0
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                {idx + 1}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <button
+                                type="button"
+                                className="font-medium text-slate-800 hover:text-[#1348f3] hover:underline"
+                                onClick={() => {
+                                  setZoomSection(null);
+                                  onPhysicianClick?.(p.physician);
+                                }}
+                              >
+                                {p.physician}
+                              </button>
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-500">
+                              {departmentByName[p.physician] || '—'}
+                            </td>
+                            <td className="px-3 py-2.5 text-right tabular-nums">
+                              {p.totalOpdConsults}
+                            </td>
+                            <td className="px-3 py-2.5 text-right tabular-nums">
+                              {p.actualAdmissionsFromOpd}
+                            </td>
+                            <td
+                              className={`px-3 py-2.5 text-right font-semibold ${
+                                p.conversionRate >= goodThreshold
+                                  ? 'text-emerald-600'
+                                  : p.conversionRate >= averageThreshold
+                                    ? 'text-amber-600'
+                                    : 'text-red-500'
+                              }`}
+                            >
+                              {p.conversionRate}%
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {zoomSection === 'diagnoses' && (
+                <div className="space-y-2 max-w-xl mx-auto">
+                  <div className="flex justify-end mb-2">
+                    <select
+                      value={diagDept}
+                      onChange={(e) => setDiagDept(e.target.value)}
+                      className="text-[12px] border border-slate-200 rounded-md px-2 py-1 text-slate-600 bg-white focus:outline-none"
+                    >
+                      <option value="All">All departments</option>
+                      {departmentOptions.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {rankedDiagnoses.length === 0 ? (
+                    <p className="text-center text-slate-400 py-8">No diagnoses yet</p>
+                  ) : (
+                    rankedDiagnoses.map((item, idx) => {
+                      const max = rankedDiagnoses[0]?.count || 1;
+                      const pct = Math.round((item.count / max) * 100);
+                      return (
+                        <div
+                          key={item.name}
+                          className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0"
+                        >
+                          <span
+                            className={`inline-flex items-center justify-center w-6 h-6 rounded text-[11px] font-bold shrink-0 ${
+                              idx === 0
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {idx + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-slate-800 text-[13px]">{item.name}</p>
+                            <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-[#1348f3] rounded-full"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                          <span className="text-[13px] font-semibold text-slate-600 shrink-0">
+                            {item.count}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               )}
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -80,7 +80,7 @@ function buildHtml(p: PrintDashboardPayload): string {
     h1 { font-size: 18px; margin: 0 0 4px; }
     h2 { font-size: 13px; margin: 18px 0 8px; color: #334155; }
     .meta { color: #64748b; font-size: 11px; margin-bottom: 16px; }
-    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px; }
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 8px; }
     .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
     .card .label { color: #64748b; font-size: 11px; font-weight: 500; }
     .card .value { font-size: 22px; font-weight: 700; margin-top: 2px; }
@@ -103,12 +103,8 @@ function buildHtml(p: PrintDashboardPayload): string {
 
   <div class="kpis">
     <div class="card">
-      <div class="label">Total OPD Consults</div>
+      <div class="label">From OPD</div>
       <div class="value">${p.kpis.totalOpd}${deltaHtml(p.kpis.totalOpd, prev?.totalOpd)}</div>
-    </div>
-    <div class="card">
-      <div class="label">Advised for Admission</div>
-      <div class="value">${p.kpis.advised}${deltaHtml(p.kpis.advised, prev?.advised)}</div>
     </div>
     <div class="card">
       <div class="label">Actual Admissions</div>
