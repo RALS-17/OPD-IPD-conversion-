@@ -34,10 +34,6 @@ interface AdmissionLogProps {
   onDelete: (id: string) => void | Promise<void>;
   physicians: string[];
   departmentByName?: Record<string, string>;
-  physicianMeta?: Record<
-    string,
-    { staffType?: string; specialization?: string; subSpecialization?: string }
-  >;
   isDoctor?: boolean;
   physicianName?: string | null;
 }
@@ -123,7 +119,6 @@ export default function AdmissionLog({
   onDelete,
   physicians,
   departmentByName = {},
-  physicianMeta = {},
   isDoctor = false,
   physicianName = null,
 }: AdmissionLogProps) {
@@ -783,7 +778,6 @@ export default function AdmissionLog({
         initialData={editing}
         physicians={physicians}
         departmentByName={departmentByName}
-        physicianMeta={physicianMeta}
       />
     </div>
   );

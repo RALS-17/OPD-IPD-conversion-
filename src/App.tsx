@@ -241,16 +241,6 @@ export default function App() {
   const departmentByName = Object.fromEntries(
     physicians.map((p) => [p.name, p.department])
   );
-  const physicianMeta = Object.fromEntries(
-    physicians.map((p) => [
-      p.name,
-      {
-        staffType: p.staffType,
-        specialization: p.specialization,
-        subSpecialization: p.subSpecialization,
-      },
-    ])
-  );
 
   const roleScopedAdmissions = filterByPhysician(
     admissions,
@@ -445,7 +435,6 @@ export default function App() {
                 onDelete={deleteAdmission}
                 physicians={physicianNames}
                 departmentByName={departmentByName}
-                physicianMeta={physicianMeta}
                 isDoctor={isDoctor}
                 physicianName={physicianName}
               />
