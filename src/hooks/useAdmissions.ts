@@ -366,6 +366,11 @@ export function useAdmissions() {
           actorName: auditActorRef.current.name,
           actorEmail: auditActorRef.current.email,
         });
+        // If this doctor has a permanent OPD total, +1 so edited baseline stays current
+        if (data.opdAttendingPhysician) {
+          const { incrementOpdConsultTotalIfSet } = await import('../lib/opdConsultOverrides');
+          void incrementOpdConsultTotalIfSet(data.opdAttendingPhysician);
+        }
         return;
       } catch (err) {
         console.error('Supabase insert failed', err);
@@ -387,6 +392,10 @@ export function useAdmissions() {
       actorName: auditActorRef.current.name,
       actorEmail: auditActorRef.current.email,
     });
+    if (data.opdAttendingPhysician) {
+      const { incrementOpdConsultTotalIfSet } = await import('../lib/opdConsultOverrides');
+      void incrementOpdConsultTotalIfSet(data.opdAttendingPhysician);
+    }
   }, []);
 
   const updateAdmission = useCallback(async (id: string, data: Partial<Admission>) => {

@@ -26,12 +26,27 @@ export interface Admission {
   createdAt: string;
 }
 
+export type PhysicianStaffType = 'Active' | 'Visiting';
+
 export interface Physician {
   id: string;
   name: string;
   department: string;
+  /** Roster category: Active staff vs Visiting */
+  staffType: PhysicianStaffType;
+  specialization: string;
+  subSpecialization: string;
+  /** Soft-delete / enabled flag (not the same as Active vs Visiting) */
   active: boolean;
   createdAt: string;
+}
+
+export interface PhysicianWriteFields {
+  name: string;
+  department: string;
+  staffType: PhysicianStaffType;
+  specialization: string;
+  subSpecialization: string;
 }
 
 export interface PhysicianStats {
@@ -84,14 +99,17 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export const DEPARTMENTS = [
+  'Anesthesiology',
   'Internal Medicine',
-  'Orthopedics',
-  'General Surgery',
   'Obstetrics & Gynecology',
-  'Pulmonology',
   'Pediatrics',
+  'Surgery',
+  'Dentistry',
+  'Rehabilitation Medicine',
+  'Occupational and Family Medicine',
+  'Radiology',
+  'Pathology',
   'Emergency Medicine',
-  'Cardiology',
-  'Neurology',
-  'Family Medicine',
 ] as const;
+
+export const PHYSICIAN_STAFF_TYPES: PhysicianStaffType[] = ['Active', 'Visiting'];

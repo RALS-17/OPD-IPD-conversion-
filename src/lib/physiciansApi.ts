@@ -1,11 +1,18 @@
-import type { Physician } from '../types';
+import type { Physician, PhysicianStaffType, PhysicianWriteFields } from '../types';
 import { supabase, isSupabaseConfigured } from './supabase';
+
+function asStaffType(v: unknown): PhysicianStaffType {
+  return String(v).toLowerCase() === 'visiting' ? 'Visiting' : 'Active';
+}
 
 export function fromPhysicianRow(row: Record<string, unknown>): Physician {
   return {
     id: String(row.id),
     name: String(row.name ?? ''),
     department: String(row.department ?? ''),
+    staffType: asStaffType(row.staff_type),
+    specialization: String(row.specialization ?? ''),
+    subSpecialization: String(row.sub_specialization ?? ''),
     active: row.active !== false,
     createdAt: String(row.created_at ?? new Date().toISOString()),
   };
@@ -42,11 +49,18 @@ export async function fetchPhysicianLoginMap(): Promise<Record<string, string>> 
   return map;
 }
 
-export async function insertPhysician(name: string, department: string): Promise<Physician> {
+export async function insertPhysician(fields: PhysicianWriteFields): Promise<Physician> {
   if (!supabase) throw new Error('Supabase not configured');
   const { data, error } = await supabase
     .from('physicians')
-    .insert({ name: name.trim(), department: department.trim(), active: true })
+    .insert({
+      name: fields.name.trim(),
+      department: fields.department.trim(),
+      staff_type: fields.staffType === 'Visiting' ? 'Visiting' : 'Active',
+      specialization: (fields.specialization || '').trim(),
+      sub_specialization: (fields.subSpecialization || '').trim(),
+      active: true,
+    })
     .select()
     .single();
   if (error) throw error;
@@ -55,12 +69,21 @@ export async function insertPhysician(name: string, department: string): Promise
 
 export async function updatePhysician(
   id: string,
-  fields: { name?: string; department?: string; active?: boolean }
+  fields: Partial<PhysicianWriteFields> & { active?: boolean }
 ): Promise<void> {
   if (!supabase) throw new Error('Supabase not configured');
   const payload: Record<string, unknown> = {};
   if (fields.name !== undefined) payload.name = fields.name.trim();
   if (fields.department !== undefined) payload.department = fields.department.trim();
+  if (fields.staffType !== undefined) {
+    payload.staff_type = fields.staffType === 'Visiting' ? 'Visiting' : 'Active';
+  }
+  if (fields.specialization !== undefined) {
+    payload.specialization = fields.specialization.trim();
+  }
+  if (fields.subSpecialization !== undefined) {
+    payload.sub_specialization = fields.subSpecialization.trim();
+  }
   if (fields.active !== undefined) payload.active = fields.active;
   const { error } = await supabase.from('physicians').update(payload).eq('id', id);
   if (error) throw error;

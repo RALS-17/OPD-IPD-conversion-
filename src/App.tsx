@@ -26,6 +26,7 @@ import PhysicianDetail from './components/PhysicianDetail';
 import { printDashboardSnapshot } from './lib/printDashboard';
 import {
   applyOpdConsultOverrides,
+  fetchOpdConsultOverrides,
   loadOpdConsultOverrides,
   type OpdConsultOverrides,
 } from './lib/opdConsultOverrides';
@@ -98,6 +99,23 @@ export default function App() {
     loadOpdConsultOverrides()
   );
   const defaultPageSet = useRef(false);
+
+  // Load permanent OPD totals from Supabase (shared across devices)
+  useEffect(() => {
+    let cancelled = false;
+    void fetchOpdConsultOverrides().then((map) => {
+      if (!cancelled) setOpdOverrides(map);
+    });
+    const onChanged = (e: Event) => {
+      const detail = (e as CustomEvent<OpdConsultOverrides>).detail;
+      if (detail) setOpdOverrides(detail);
+    };
+    window.addEventListener('opd-totals-changed', onChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('opd-totals-changed', onChanged);
+    };
+  }, []);
 
   // Set default page once profile is known (admin → Dashboard)
   useEffect(() => {
@@ -222,6 +240,16 @@ export default function App() {
 
   const departmentByName = Object.fromEntries(
     physicians.map((p) => [p.name, p.department])
+  );
+  const physicianMeta = Object.fromEntries(
+    physicians.map((p) => [
+      p.name,
+      {
+        staffType: p.staffType,
+        specialization: p.specialization,
+        subSpecialization: p.subSpecialization,
+      },
+    ])
   );
 
   const roleScopedAdmissions = filterByPhysician(
@@ -417,6 +445,7 @@ export default function App() {
                 onDelete={deleteAdmission}
                 physicians={physicianNames}
                 departmentByName={departmentByName}
+                physicianMeta={physicianMeta}
                 isDoctor={isDoctor}
                 physicianName={physicianName}
               />

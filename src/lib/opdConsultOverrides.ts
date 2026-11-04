@@ -1,10 +1,12 @@
-/** Manual Total OPD Consults overrides per physician (not all OPD is encoded in the system). */
+/** Permanent Total OPD Consults per physician — Supabase (shared) + localStorage fallback. */
+
+import { supabase, isSupabaseConfigured } from './supabase';
 
 const STORAGE_KEY = 'opd-ipd-manual-opd-consults';
 
 export type OpdConsultOverrides = Record<string, number>;
 
-export function loadOpdConsultOverrides(): OpdConsultOverrides {
+export function loadOpdConsultOverridesLocal(): OpdConsultOverrides {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
@@ -22,25 +24,108 @@ export function loadOpdConsultOverrides(): OpdConsultOverrides {
   }
 }
 
-export function saveOpdConsultOverrides(map: OpdConsultOverrides): void {
+export function saveOpdConsultOverridesLocal(map: OpdConsultOverrides): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
 }
 
-export function setOpdConsultOverride(
-  map: OpdConsultOverrides,
-  physician: string,
-  value: number | null
-): OpdConsultOverrides {
-  const next = { ...map };
-  const key = physician.trim();
-  if (!key) return next;
-  if (value === null || value === undefined || Number.isNaN(value)) {
-    delete next[key];
-  } else {
-    next[key] = Math.max(0, Math.floor(value));
+/** Sync init (local cache). Prefer fetchOpdConsultOverrides on app load. */
+export function loadOpdConsultOverrides(): OpdConsultOverrides {
+  return loadOpdConsultOverridesLocal();
+}
+
+/** Load permanent totals (Supabase first, else localStorage). */
+export async function fetchOpdConsultOverrides(): Promise<OpdConsultOverrides> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('physician_opd_totals')
+        .select('physician_name, total_opd');
+      if (error) throw error;
+      const map: OpdConsultOverrides = {};
+      (data || []).forEach((row) => {
+        const name = String(row.physician_name || '').trim();
+        const n = Number(row.total_opd);
+        if (name && Number.isFinite(n) && n >= 0) map[name] = Math.floor(n);
+      });
+      saveOpdConsultOverridesLocal(map);
+      return map;
+    } catch (err) {
+      console.error('Failed to load physician_opd_totals', err);
+    }
   }
-  saveOpdConsultOverrides(next);
+  return loadOpdConsultOverridesLocal();
+}
+
+/** Set permanent OPD total for a physician (upsert). Shared across devices via Supabase. */
+export async function upsertOpdConsultTotal(
+  physician: string,
+  totalOpd: number
+): Promise<OpdConsultOverrides> {
+  const key = physician.trim();
+  const value = Math.max(0, Math.floor(totalOpd));
+  const local = loadOpdConsultOverridesLocal();
+  if (!key) return local;
+
+  local[key] = value;
+  saveOpdConsultOverridesLocal(local);
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase.from('physician_opd_totals').upsert(
+        {
+          physician_name: key,
+          total_opd: value,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'physician_name' }
+      );
+      if (error) throw error;
+    } catch (err) {
+      console.error('Failed to save physician_opd_totals', err);
+      alert(
+        'Could not save OPD total to the database. Run supabase/physician_opd_totals.sql in Supabase SQL Editor, then try again. Value was kept on this browser only for now.'
+      );
+    }
+  }
+
+  const next = { ...local };
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('opd-totals-changed', { detail: next }));
+  }
   return next;
+}
+
+/**
+ * When a new admission is encoded for a doctor who already has a permanent total,
+ * add +1 so the edited baseline stays correct as new data arrives.
+ */
+export async function incrementOpdConsultTotalIfSet(
+  physician: string
+): Promise<OpdConsultOverrides | null> {
+  const key = (physician || '').trim();
+  if (!key) return null;
+
+  const local = loadOpdConsultOverridesLocal();
+  if (Object.prototype.hasOwnProperty.call(local, key)) {
+    return upsertOpdConsultTotal(key, local[key] + 1);
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('physician_opd_totals')
+        .select('total_opd')
+        .eq('physician_name', key)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      return upsertOpdConsultTotal(key, Number(data.total_opd) + 1);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 export interface StatsWithOpd {
@@ -50,13 +135,11 @@ export interface StatsWithOpd {
   actualAdmissionsFromOpd: number;
   conversionRate: number;
   totalAdmissions: number;
-  /** System-encoded count before manual override */
   systemOpdConsults?: number;
-  /** True when a manual total is applied */
   isManualOpd?: boolean;
 }
 
-/** Apply manual totals and recompute conversion rate. */
+/** Permanent totals replace system-encoded count when present. */
 export function applyOpdConsultOverrides<T extends StatsWithOpd>(
   stats: T[],
   overrides: OpdConsultOverrides

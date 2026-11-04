@@ -94,8 +94,13 @@ export function usePhysicians() {
 
   const addPhysician = useCallback(
     async (
-      name: string,
-      department: string,
+      fields: {
+        name: string;
+        department: string;
+        staffType: 'Active' | 'Visiting';
+        specialization: string;
+        subSpecialization: string;
+      },
       account?: DoctorAccountAction | null
     ) => {
       if (!isSupabaseConfigured) {
@@ -103,14 +108,21 @@ export function usePhysicians() {
         return;
       }
       try {
-        const row = await insertPhysician(name, department);
+        const row = await insertPhysician(fields);
         setPhysicians((prev) =>
           [...prev, row].sort((a, b) => a.name.localeCompare(b.name))
         );
         await applyAccount(row.id, row.name, account);
       } catch (e) {
         console.error(e);
-        alert(e instanceof Error ? e.message : 'Failed to add physician.');
+        alert(
+          e instanceof Error
+            ? e.message.includes('staff_type') || e.message.includes('specialization')
+              ? 'Run supabase/physician_directory_fields.sql in Supabase, then try again.\n\n' +
+                e.message
+              : e.message
+            : 'Failed to add physician.'
+        );
       }
     },
     []
@@ -119,22 +131,34 @@ export function usePhysicians() {
   const editPhysician = useCallback(
     async (
       id: string,
-      name: string,
-      department: string,
+      fields: {
+        name: string;
+        department: string;
+        staffType: 'Active' | 'Visiting';
+        specialization: string;
+        subSpecialization: string;
+      },
       account?: DoctorAccountAction | null
     ) => {
       if (!isSupabaseConfigured) return;
       try {
-        await updatePhysician(id, { name, department });
+        await updatePhysician(id, fields);
         setPhysicians((prev) =>
           prev
-            .map((p) => (p.id === id ? { ...p, name, department } : p))
+            .map((p) => (p.id === id ? { ...p, ...fields } : p))
             .sort((a, b) => a.name.localeCompare(b.name))
         );
-        await applyAccount(id, name, account);
+        await applyAccount(id, fields.name, account);
       } catch (e) {
         console.error(e);
-        alert(e instanceof Error ? e.message : 'Failed to update physician.');
+        alert(
+          e instanceof Error
+            ? e.message.includes('staff_type') || e.message.includes('specialization')
+              ? 'Run supabase/physician_directory_fields.sql in Supabase, then try again.\n\n' +
+                e.message
+              : e.message
+            : 'Failed to update physician.'
+        );
       }
     },
     []

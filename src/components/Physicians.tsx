@@ -1,21 +1,19 @@
 import { useMemo, useState } from 'react';
 import { Plus, Pencil, Trash2, Save, X, Stethoscope, KeyRound } from 'lucide-react';
-import type { Physician } from '../types';
-import { DEPARTMENTS } from '../types';
+import type { Physician, PhysicianStaffType, PhysicianWriteFields } from '../types';
+import { DEPARTMENTS, PHYSICIAN_STAFF_TYPES } from '../types';
 import type { DoctorAccountAction } from '../hooks/usePhysicians';
 
 interface PhysiciansProps {
   physicians: Physician[];
   loginLinked?: Record<string, string>;
   onAdd: (
-    name: string,
-    department: string,
+    fields: PhysicianWriteFields,
     account?: DoctorAccountAction | null
   ) => void | Promise<void>;
   onEdit: (
     id: string,
-    name: string,
-    department: string,
+    fields: PhysicianWriteFields,
     account?: DoctorAccountAction | null
   ) => void | Promise<void>;
   onDelete: (id: string) => void | Promise<void>;
@@ -35,8 +33,13 @@ export default function Physicians({
   canManageAccounts = true,
 }: PhysiciansProps) {
   const [deptFilter, setDeptFilter] = useState('All');
+  const [staffFilter, setStaffFilter] = useState<'All' | PhysicianStaffType>('All');
+
   const [newName, setNewName] = useState('');
   const [newDept, setNewDept] = useState<string>(DEPARTMENTS[0]);
+  const [newStaffType, setNewStaffType] = useState<PhysicianStaffType>('Active');
+  const [newSpec, setNewSpec] = useState('');
+  const [newSubSpec, setNewSubSpec] = useState('');
   const [createLogin, setCreateLogin] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -44,6 +47,9 @@ export default function Physicians({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editDept, setEditDept] = useState('');
+  const [editStaffType, setEditStaffType] = useState<PhysicianStaffType>('Active');
+  const [editSpec, setEditSpec] = useState('');
+  const [editSubSpec, setEditSubSpec] = useState('');
   const [editAccountOn, setEditAccountOn] = useState(false);
   const [editMode, setEditMode] = useState<'create' | 'link'>('create');
   const [editEmail, setEditEmail] = useState('');
@@ -58,9 +64,12 @@ export default function Physicians({
   }, [physicians]);
 
   const filtered = useMemo(() => {
-    if (deptFilter === 'All') return physicians;
-    return physicians.filter((p) => p.department === deptFilter);
-  }, [physicians, deptFilter]);
+    return physicians.filter((p) => {
+      if (deptFilter !== 'All' && p.department !== deptFilter) return false;
+      if (staffFilter !== 'All' && (p.staffType || 'Active') !== staffFilter) return false;
+      return true;
+    });
+  }, [physicians, deptFilter, staffFilter]);
 
   const showMsg = (t: string) => {
     setMessage(t);
@@ -101,8 +110,20 @@ export default function Physicians({
     }
     setSaving(true);
     try {
-      await onAdd(newName.trim(), newDept, account);
+      await onAdd(
+        {
+          name: newName.trim(),
+          department: newDept,
+          staffType: newStaffType,
+          specialization: newSpec.trim(),
+          subSpecialization: newSubSpec.trim(),
+        },
+        account
+      );
       setNewName('');
+      setNewSpec('');
+      setNewSubSpec('');
+      setNewStaffType('Active');
       setLoginEmail('');
       setLoginPassword('');
       setCreateLogin(false);
@@ -116,6 +137,9 @@ export default function Physicians({
     setEditingId(p.id);
     setEditName(p.name);
     setEditDept(p.department || DEPARTMENTS[0]);
+    setEditStaffType(p.staffType || 'Active');
+    setEditSpec(p.specialization || '');
+    setEditSubSpec(p.subSpecialization || '');
     setEditAccountOn(false);
     setEditMode('create');
     setEditEmail('');
@@ -131,7 +155,17 @@ export default function Physicians({
     }
     setSaving(true);
     try {
-      await onEdit(editingId, editName.trim(), editDept, account);
+      await onEdit(
+        editingId,
+        {
+          name: editName.trim(),
+          department: editDept,
+          staffType: editStaffType,
+          specialization: editSpec.trim(),
+          subSpecialization: editSubSpec.trim(),
+        },
+        account
+      );
       setEditingId(null);
       showMsg(
         account
@@ -151,7 +185,7 @@ export default function Physicians({
         <div>
           <h1 className="text-[16px] font-bold text-slate-900 leading-none">Physicians</h1>
           <p className="text-slate-500 text-[11.5px] mt-0.5">
-            Manage roster. Create or link doctor logins on add or edit (admin).
+            Roster with Active / Visiting, specialization, and optional doctor login.
           </p>
         </div>
         {message && (
@@ -178,7 +212,7 @@ export default function Physicians({
           <Stethoscope size={14} className="text-[#1348f3]" />
           <h2 className="text-[12.5px] font-semibold text-slate-800">Add physician</h2>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           <div>
             <label className={label}>Name</label>
             <input
@@ -198,6 +232,40 @@ export default function Physicians({
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className={label}>Staff type</label>
+            <select
+              className={field}
+              value={newStaffType}
+              onChange={(e) => setNewStaffType(e.target.value as PhysicianStaffType)}
+            >
+              {PHYSICIAN_STAFF_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={label}>Specialization</label>
+            <input
+              className={field}
+              placeholder="e.g. Cardiology"
+              value={newSpec}
+              onChange={(e) => setNewSpec(e.target.value)}
+              maxLength={120}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={label}>Sub-specialization</label>
+            <input
+              className={field}
+              placeholder="e.g. Interventional Cardiology"
+              value={newSubSpec}
+              onChange={(e) => setNewSubSpec(e.target.value)}
+              maxLength={160}
+            />
           </div>
         </div>
 
@@ -258,23 +326,37 @@ export default function Physicians({
 
       {/* List */}
       <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex-1 min-h-0 flex flex-col">
-        <div className="flex items-center justify-between gap-2 mb-2 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2 shrink-0">
           <p className="text-[11px] text-slate-500">
             {filtered.length} physician{filtered.length !== 1 ? 's' : ''}
           </p>
-          <div className="flex items-center gap-1.5">
-            <label className="text-[11px] text-slate-500">Department</label>
-            <select
-              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white"
-              value={deptFilter}
-              onChange={(e) => setDeptFilter(e.target.value)}
-            >
-              {departmentsInUse.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] text-slate-500">Staff</label>
+              <select
+                className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white"
+                value={staffFilter}
+                onChange={(e) => setStaffFilter(e.target.value as 'All' | PhysicianStaffType)}
+              >
+                <option value="All">All</option>
+                <option value="Active">Active</option>
+                <option value="Visiting">Visiting</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] text-slate-500">Department</label>
+              <select
+                className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white"
+                value={deptFilter}
+                onChange={(e) => setDeptFilter(e.target.value)}
+              >
+                {departmentsInUse.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -285,6 +367,8 @@ export default function Physicians({
                 <th className="px-3 py-1.5 font-semibold text-[10px]">#</th>
                 <th className="px-3 py-1.5 font-semibold text-[10px]">Physician</th>
                 <th className="px-3 py-1.5 font-semibold text-[10px]">Department</th>
+                <th className="px-3 py-1.5 font-semibold text-[10px]">Staff</th>
+                <th className="px-3 py-1.5 font-semibold text-[10px]">Specialization</th>
                 <th className="px-3 py-1.5 font-semibold text-[10px]">Login</th>
                 <th className="px-3 py-1.5 font-semibold text-[10px] text-right">Actions</th>
               </tr>
@@ -292,7 +376,7 @@ export default function Physicians({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
                     No physicians yet
                   </td>
                 </tr>
@@ -300,6 +384,7 @@ export default function Physicians({
                 filtered.map((p, idx) => {
                   const hasLogin = Boolean(loginLinked[p.id]);
                   const isEditing = editingId === p.id;
+                  const staff = p.staffType || 'Active';
                   return (
                     <tr key={p.id} className="border-b border-slate-50 align-top">
                       <td className="px-3 py-1.5 text-slate-400">{idx + 1}</td>
@@ -327,9 +412,68 @@ export default function Physicians({
                                 {d}
                               </option>
                             ))}
+                            {editDept && !DEPARTMENTS.includes(editDept as (typeof DEPARTMENTS)[number]) && (
+                              <option value={editDept}>{editDept}</option>
+                            )}
                           </select>
                         ) : (
                           <span className="text-slate-600">{p.department || '—'}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        {isEditing ? (
+                          <select
+                            className={field}
+                            value={editStaffType}
+                            onChange={(e) =>
+                              setEditStaffType(e.target.value as PhysicianStaffType)
+                            }
+                          >
+                            {PHYSICIAN_STAFF_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span
+                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                              staff === 'Active'
+                                ? 'text-emerald-700 bg-emerald-50'
+                                : 'text-violet-700 bg-violet-50'
+                            }`}
+                          >
+                            {staff}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 min-w-[140px]">
+                        {isEditing ? (
+                          <div className="space-y-1">
+                            <input
+                              className={field}
+                              placeholder="Specialization"
+                              value={editSpec}
+                              onChange={(e) => setEditSpec(e.target.value)}
+                              maxLength={120}
+                            />
+                            <input
+                              className={field}
+                              placeholder="Sub-specialization"
+                              value={editSubSpec}
+                              onChange={(e) => setEditSubSpec(e.target.value)}
+                              maxLength={160}
+                            />
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-slate-700">{p.specialization || '—'}</p>
+                            {p.subSpecialization && (
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                {p.subSpecialization}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-3 py-1.5">
@@ -338,69 +482,48 @@ export default function Physicians({
                             Linked
                           </span>
                         ) : (
-                          <span className="text-[10px] text-slate-400">None</span>
+                          <span className="text-[10px] text-slate-400">—</span>
                         )}
                       </td>
                       <td className="px-3 py-1.5 text-right">
                         {isEditing ? (
-                          <div className="flex flex-col items-end gap-2 min-w-[200px]">
+                          <div className="inline-flex flex-col items-end gap-1">
                             {canManageAccounts && (
-                              <div className="w-full text-left border border-slate-100 rounded-md p-2 bg-slate-50/80">
-                                <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-medium text-slate-700">
+                              <label className="flex items-center gap-1 text-[10px] text-slate-600">
+                                <input
+                                  type="checkbox"
+                                  checked={editAccountOn}
+                                  onChange={(e) => setEditAccountOn(e.target.checked)}
+                                  className="rounded border-slate-300"
+                                />
+                                Login
+                              </label>
+                            )}
+                            {editAccountOn && canManageAccounts && (
+                              <div className="text-left space-y-1 w-44">
+                                <select
+                                  className={field}
+                                  value={editMode}
+                                  onChange={(e) =>
+                                    setEditMode(e.target.value as 'create' | 'link')
+                                  }
+                                >
+                                  <option value="create">Create account</option>
+                                  <option value="link">Link existing</option>
+                                </select>
+                                <input
+                                  className={field}
+                                  placeholder="Email"
+                                  value={editEmail}
+                                  onChange={(e) => setEditEmail(e.target.value)}
+                                />
+                                {editMode === 'create' && (
                                   <input
-                                    type="checkbox"
-                                    checked={editAccountOn}
-                                    onChange={(e) => setEditAccountOn(e.target.checked)}
+                                    className={field}
+                                    placeholder="Password"
+                                    value={editPassword}
+                                    onChange={(e) => setEditPassword(e.target.value)}
                                   />
-                                  <KeyRound size={12} />
-                                  {hasLogin ? 'Re-link / create login' : 'Create or link login'}
-                                </label>
-                                {editAccountOn && (
-                                  <div className="mt-2 space-y-1.5">
-                                    <div className="flex gap-2 text-[11px]">
-                                      <label className="flex items-center gap-1">
-                                        <input
-                                          type="radio"
-                                          name={`acct-${p.id}`}
-                                          checked={editMode === 'create'}
-                                          onChange={() => setEditMode('create')}
-                                        />
-                                        Create new
-                                      </label>
-                                      <label className="flex items-center gap-1">
-                                        <input
-                                          type="radio"
-                                          name={`acct-${p.id}`}
-                                          checked={editMode === 'link'}
-                                          onChange={() => setEditMode('link')}
-                                        />
-                                        Link existing
-                                      </label>
-                                    </div>
-                                    <input
-                                      type="email"
-                                      className={field}
-                                      placeholder="Email"
-                                      value={editEmail}
-                                      onChange={(e) => setEditEmail(e.target.value)}
-                                      maxLength={120}
-                                    />
-                                    {editMode === 'create' && (
-                                      <input
-                                        type="text"
-                                        className={field}
-                                        placeholder="Temp password (min 6)"
-                                        value={editPassword}
-                                        onChange={(e) => setEditPassword(e.target.value)}
-                                        maxLength={128}
-                                      />
-                                    )}
-                                    {editMode === 'link' && (
-                                      <p className="text-[9.5px] text-slate-400">
-                                        User must already exist in Supabase Auth.
-                                      </p>
-                                    )}
-                                  </div>
                                 )}
                               </div>
                             )}
@@ -409,16 +532,18 @@ export default function Physicians({
                                 type="button"
                                 onClick={saveEdit}
                                 disabled={saving}
-                                className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded hover:bg-emerald-100"
+                                className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                                title="Save"
                               >
-                                <Save size={11} /> Save
+                                <Save size={14} />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setEditingId(null)}
-                                className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-slate-100 rounded"
+                                className="p-1 text-slate-400 hover:bg-slate-100 rounded"
+                                title="Cancel"
                               >
-                                <X size={11} /> Cancel
+                                <X size={14} />
                               </button>
                             </div>
                           </div>
@@ -427,20 +552,20 @@ export default function Physicians({
                             <button
                               type="button"
                               onClick={() => startEdit(p)}
-                              className="p-1 text-slate-400 hover:text-[#1348f3] hover:bg-blue-50 rounded"
+                              className="p-1 text-slate-500 hover:text-[#1348f3] hover:bg-blue-50 rounded"
                               title="Edit"
                             >
-                              <Pencil size={12} />
+                              <Pencil size={13} />
                             </button>
                             <button
                               type="button"
                               onClick={() => {
-                                if (confirm(`Delete ${p.name}?`)) onDelete(p.id);
+                                if (confirm(`Remove ${p.name} from roster?`)) onDelete(p.id);
                               }}
                               className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
                               title="Delete"
                             >
-                              <Trash2 size={12} />
+                              <Trash2 size={13} />
                             </button>
                           </div>
                         )}

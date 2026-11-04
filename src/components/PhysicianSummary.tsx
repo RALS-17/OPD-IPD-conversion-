@@ -4,10 +4,9 @@ import type { PhysicianStats } from '../types';
 import {
   applyOpdConsultOverrides,
   loadOpdConsultOverrides,
-  setOpdConsultOverride,
+  upsertOpdConsultTotal,
   type OpdConsultOverrides,
 } from '../lib/opdConsultOverrides';
-
 interface PhysicianSummaryProps {
   stats: PhysicianStats[];
   goodThreshold: number;
@@ -66,13 +65,14 @@ export default function PhysicianSummary({
     setEditValue('');
   };
 
-  const saveEdit = (physician: string) => {
+  const saveEdit = async (physician: string) => {
     const n = Number(editValue);
     if (!Number.isFinite(n) || n < 0) {
       cancelEdit();
       return;
     }
-    const next = setOpdConsultOverride(overrides, physician, n);
+    // Permanent total for this doctor (shared via Supabase when configured)
+    const next = await upsertOpdConsultTotal(physician, n);
     commitOverrides(next);
     cancelEdit();
   };
