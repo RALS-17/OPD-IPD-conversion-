@@ -4,7 +4,8 @@ import {
   Users,
   UserCog,
   Settings,
-  ChevronLeft,
+  PanelLeftClose,
+  PanelLeft,
   ShieldCheck,
 } from 'lucide-react';
 import type { Page } from '../types';
@@ -27,6 +28,10 @@ const mainNav: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'physicians', label: 'Physicians', icon: UserCog },
 ];
 
+/** Smooth, modern collapse easing (close to Linear / Material standard) */
+const ease = 'cubic-bezier(0.4, 0, 0.2, 1)';
+const duration = 'duration-300';
+
 export default function Sidebar({
   currentPage,
   onNavigate,
@@ -44,62 +49,92 @@ export default function Sidebar({
         key={id}
         onClick={() => onNavigate(id)}
         title={collapsed ? label : undefined}
-        className={`w-full flex items-center gap-2.5 rounded-lg text-[12.5px] font-medium transition-all ${
-          collapsed ? 'justify-center px-0 py-2.5' : 'px-2.5 py-2'
-        } ${
-          isActive
-            ? 'bg-[#e8f8f0] text-[#0d9f6e] dark:bg-emerald-950 dark:text-emerald-400'
-            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
-        }`}
+        className={`
+          group relative w-full flex items-center rounded-lg text-[12.5px] font-medium
+          transition-[background-color,color,padding] ${duration}
+          ${collapsed ? 'justify-center px-0 py-2.5' : 'px-2.5 py-2 gap-2.5'}
+          ${
+            isActive
+              ? 'bg-[#e8f8f0] text-[#0d9f6e] dark:bg-emerald-950 dark:text-emerald-400'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+          }
+        `}
+        style={{ transitionTimingFunction: ease }}
       >
         <Icon
           size={16}
           strokeWidth={isActive ? 2.2 : 1.8}
-          className={isActive ? 'text-[#0d9f6e]' : 'text-slate-400'}
+          className={`shrink-0 transition-colors ${duration} ${
+            isActive ? 'text-[#0d9f6e]' : 'text-slate-400 group-hover:text-slate-500'
+          }`}
+          style={{ transitionTimingFunction: ease }}
         />
-        {!collapsed && label}
+        <span
+          className={`
+            overflow-hidden whitespace-nowrap transition-all ${duration}
+            ${collapsed ? 'max-w-0 opacity-0 translate-x-1' : 'max-w-[160px] opacity-100 translate-x-0'}
+          `}
+          style={{ transitionTimingFunction: ease }}
+        >
+          {label}
+        </span>
       </button>
     );
   };
 
   return (
     <aside
-      className={`bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-700 flex flex-col h-screen transition-all duration-300 ease-in-out shrink-0 ${
-        collapsed ? 'w-[64px]' : 'w-[220px]'
-      }`}
+      className={`
+        relative bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-700
+        flex flex-col h-full shrink-0 overflow-hidden
+        transition-[width] ${duration}
+        ${collapsed ? 'w-[64px]' : 'w-[220px]'}
+      `}
+      style={{ transitionTimingFunction: ease }}
     >
+      {/* Collapse control — same horizontal alignment as nav icons */}
       <div
-        className={`flex items-center border-b border-slate-50 dark:border-slate-800 ${
-          collapsed ? 'px-2 py-3 justify-center' : 'px-3.5 py-3.5 gap-2.5'
-        }`}
+        className={`
+          flex items-center pt-2.5 pb-1
+          transition-[padding] ${duration}
+          ${collapsed ? 'px-1.5 justify-center' : 'px-2.5'}
+        `}
+        style={{ transitionTimingFunction: ease }}
       >
-        {!collapsed && (
-          <>
-            <img src="/logo.svg" alt="Logo" className="w-9 h-9 object-contain shrink-0" />
-            <div className="min-w-0 flex-1">
-              <h1 className="text-[13.5px] font-bold text-slate-900 dark:text-slate-100 leading-tight underline decoration-[#1348f3] decoration-2 underline-offset-[3px] truncate">
-                {hospitalName}
-              </h1>
-              <p className="text-[9.5px] text-slate-500 mt-0.5 font-medium tracking-wide truncate">
-                OPD → IPD Monitor
-              </p>
-            </div>
-            <button
-              onClick={onToggle}
-              className="p-1 rounded-md hover:bg-slate-100 text-slate-500 shrink-0"
-            >
-              <ChevronLeft size={16} />
-            </button>
-          </>
-        )}
-        {collapsed && (
-          <button onClick={onToggle} className="p-1 rounded-md hover:bg-slate-100" title="Expand">
-            <img src="/logo.svg" alt="Logo" className="w-8 h-8 object-contain" />
-          </button>
-        )}
+        <button
+          onClick={onToggle}
+          type="button"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className={`
+            flex items-center justify-center
+            w-7 h-7 rounded-md shrink-0
+            border border-slate-200 dark:border-slate-600
+            bg-white dark:bg-slate-900
+            text-slate-500 dark:text-slate-400
+            hover:bg-slate-50 dark:hover:bg-slate-800
+            hover:border-slate-300 dark:hover:border-slate-500
+            hover:text-slate-700 dark:hover:text-slate-200
+            transition-colors shadow-sm
+            ${collapsed ? '' : 'ml-0'}
+          `}
+        >
+          {collapsed ? (
+            <PanelLeft size={14} strokeWidth={1.8} />
+          ) : (
+            <PanelLeftClose size={14} strokeWidth={1.8} />
+          )}
+        </button>
       </div>
 
-      <nav className={`flex-1 py-3 space-y-0.5 ${collapsed ? 'px-1.5' : 'px-2.5'}`}>
+      {/* Nav */}
+      <nav
+        className={`
+          flex-1 py-1.5 space-y-0.5 overflow-hidden
+          transition-[padding] ${duration}
+          ${collapsed ? 'px-1.5' : 'px-2.5'}
+        `}
+        style={{ transitionTimingFunction: ease }}
+      >
         {mainNav
           .filter((item) => {
             if (item.id === 'dashboard' && !isAdmin) return false;
@@ -109,33 +144,57 @@ export default function Sidebar({
           .map((item) => navBtn(item.id, item.label, item.icon))}
       </nav>
 
-      {/* Settings just above footer */}
-      <div className={`${collapsed ? 'px-1.5' : 'px-2.5'} pb-1`}>
+      {/* Settings */}
+      <div
+        className={`
+          pb-1 overflow-hidden transition-[padding] ${duration}
+          ${collapsed ? 'px-1.5' : 'px-2.5'}
+        `}
+        style={{ transitionTimingFunction: ease }}
+      >
         {navBtn('settings', 'Settings', Settings)}
       </div>
 
-      <div className={`border-t border-slate-100 dark:border-slate-800 ${collapsed ? 'px-1.5 py-3' : 'px-3.5 py-3'}`}>
-        {!collapsed ? (
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-              <ShieldCheck size={12} className="text-emerald-500 shrink-0" />
-              <span>Data is secure & HIPAA compliant</span>
-            </div>
-            <div className="text-center">
-              <p className="text-[10px] font-bold text-slate-500 tracking-[0.1em] uppercase">
-                {branch}
-              </p>
-              <p className="text-[9px] text-slate-400">{hospitalName} Hospital</p>
-            </div>
+      {/* Footer */}
+      <div
+        className={`
+          border-t border-slate-100 dark:border-slate-800 overflow-hidden
+          transition-[padding] ${duration}
+          ${collapsed ? 'px-1.5 py-3' : 'px-3.5 py-3'}
+        `}
+        style={{ transitionTimingFunction: ease }}
+      >
+        <div
+          className={`
+            space-y-2 transition-all ${duration}
+            ${collapsed ? 'max-h-0 opacity-0 overflow-hidden' : 'max-h-24 opacity-100'}
+          `}
+          style={{ transitionTimingFunction: ease }}
+        >
+          <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+            <ShieldCheck size={12} className="text-emerald-500 shrink-0" />
+            <span className="whitespace-nowrap">Data is secure & HIPAA compliant</span>
           </div>
-        ) : (
-          <div className="flex flex-col items-center gap-1.5">
-            <ShieldCheck size={14} className="text-emerald-500" />
-            <p className="text-[8px] font-bold text-slate-400">
-              {branch.slice(0, 3).toUpperCase()}
+          <div className="text-center">
+            <p className="text-[10px] font-bold text-slate-500 tracking-[0.1em] uppercase truncate">
+              {branch}
             </p>
+            <p className="text-[9px] text-slate-400 truncate">{hospitalName} Hospital</p>
           </div>
-        )}
+        </div>
+
+        <div
+          className={`
+            flex flex-col items-center gap-1.5 transition-all ${duration}
+            ${collapsed ? 'max-h-16 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}
+          `}
+          style={{ transitionTimingFunction: ease }}
+        >
+          <ShieldCheck size={14} className="text-emerald-500" />
+          <p className="text-[8px] font-bold text-slate-400">
+            {branch.slice(0, 3).toUpperCase()}
+          </p>
+        </div>
       </div>
     </aside>
   );

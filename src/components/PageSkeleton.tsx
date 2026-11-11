@@ -262,27 +262,20 @@ function SettingsSkeleton() {
 function SidebarSkeleton({ collapsed }: { collapsed: boolean }) {
   return (
     <aside
-      className={`bg-white border-r border-slate-100 flex flex-col h-screen shrink-0 ${
+      className={`bg-white border-r border-slate-100 flex flex-col h-full shrink-0 ${
         collapsed ? 'w-[64px]' : 'w-[220px]'
       }`}
     >
-      <div className={`border-b border-slate-50 ${collapsed ? 'p-3' : 'px-3.5 py-3.5'}`}>
-        <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-2.5'}`}>
-          <Bone className="w-9 h-9 shrink-0" />
-          {!collapsed && (
-            <div className="flex-1 space-y-1.5">
-              <Bone className="h-3.5 w-24" />
-              <Bone className="h-2 w-20" />
-            </div>
-          )}
-        </div>
+      <div
+        className={`flex items-center pt-2.5 pb-1 ${
+          collapsed ? 'px-1.5 justify-center' : 'px-2.5'
+        }`}
+      >
+        <Bone className="w-7 h-7 rounded-md" />
       </div>
       <nav className={`flex-1 py-3 space-y-1.5 ${collapsed ? 'px-1.5' : 'px-2.5'}`}>
         {[0, 1, 2, 3].map((i) => (
-          <Bone
-            key={i}
-            className={`h-9 ${collapsed ? 'w-full' : 'w-full'}`}
-          />
+          <Bone key={i} className="h-9 w-full" />
         ))}
       </nav>
       <div className={`${collapsed ? 'px-1.5' : 'px-2.5'} pb-1`}>
@@ -303,7 +296,13 @@ function SidebarSkeleton({ collapsed }: { collapsed: boolean }) {
 function HeaderSkeleton() {
   return (
     <header className="h-11 bg-white border-b border-slate-200 flex items-center justify-between px-3 shrink-0">
-      <Bone className="h-8 max-w-md w-full" />
+      <div className="flex items-center gap-2.5">
+        <Bone className="w-7 h-7 shrink-0 rounded-md" />
+        <div className="space-y-1">
+          <Bone className="h-3 w-24" />
+          <Bone className="h-2 w-20" />
+        </div>
+      </div>
       <div className="flex items-center gap-2.5">
         <Bone className="w-7 h-7 rounded-md" />
         <Bone className="w-6 h-6 rounded-full" />
@@ -345,12 +344,12 @@ export default function PageSkeleton({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f4f7fb]">
-      <SidebarSkeleton collapsed={collapsed} />
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <HeaderSkeleton />
+    <div className="flex flex-col h-screen overflow-hidden bg-[#f4f7fb]">
+      <HeaderSkeleton />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <SidebarSkeleton collapsed={collapsed} />
         <main
-          className={`flex-1 min-h-0 ${
+          className={`flex-1 min-h-0 min-w-0 ${
             page === 'dashboard' ? 'overflow-hidden' : 'overflow-y-auto'
           }`}
         >

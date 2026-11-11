@@ -241,6 +241,16 @@ export default function App() {
   const departmentByName = Object.fromEntries(
     physicians.map((p) => [p.name, p.department])
   );
+  const physicianMeta = Object.fromEntries(
+    physicians.map((p) => [
+      p.name,
+      {
+        staffType: p.staffType,
+        specialization: p.specialization,
+        subSpecialization: p.subSpecialization,
+      },
+    ])
+  );
 
   const roleScopedAdmissions = filterByPhysician(
     admissions,
@@ -357,46 +367,60 @@ export default function App() {
   const visibleAdmissions = roleScopedAdmissions;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f4f7fb] dark:bg-slate-950">
-      <Sidebar
-        currentPage={currentPage}
-        onNavigate={handleNavigate}
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
-        hospitalName={settings.hospitalName}
-        branch={settings.branch}
-        isAdmin={isAdmin}
-        isDoctor={isDoctor}
-      />
-
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-11 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex items-center justify-end px-3 shrink-0 z-20">
-          <div className="flex items-center gap-2.5">
-            <NotificationBell items={notifItems} />
-            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[9px] font-bold">
-                {adminInitials}
-              </div>
-              <div className="hidden sm:block">
-                <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-100 leading-tight">
-                  {displayName}
-                </p>
-                <p className="text-[9px] text-slate-400">{displayRole}</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => signOut()}
-              title="Sign out"
-              className="p-1.5 rounded-md hover:bg-slate-50 text-slate-500 hover:text-red-600"
-            >
-              <LogOut size={15} />
-            </button>
+    <div className="flex flex-col h-screen overflow-hidden bg-[#f4f7fb] dark:bg-slate-950">
+      {/* Full-width top header — logo always far left, never collapses */}
+      <header className="h-11 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-3 shrink-0 z-30">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <img src="/logo.svg" alt="Logo" className="w-7 h-7 object-contain shrink-0" />
+          <div className="min-w-0">
+            <h1 className="text-[13px] font-bold text-slate-900 dark:text-slate-100 leading-tight underline decoration-[#1348f3] decoration-2 underline-offset-[3px] truncate">
+              {settings.hospitalName}
+            </h1>
+            <p className="text-[9.5px] text-slate-500 font-medium tracking-wide truncate leading-tight">
+              OPD → IPD Monitor
+            </p>
           </div>
-        </header>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <NotificationBell items={notifItems} />
+          <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200 dark:border-slate-700">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[9px] font-bold">
+              {adminInitials}
+            </div>
+            <div className="hidden sm:block">
+              <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-100 leading-tight">
+                {displayName}
+              </p>
+              <p className="text-[9px] text-slate-400">{displayRole}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => signOut()}
+            title="Sign out"
+            className="p-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-red-600"
+          >
+            <LogOut size={15} />
+          </button>
+        </div>
+      </header>
+
+      {/* Below header: collapsible sidebar + main content */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <Sidebar
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          collapsed={collapsed}
+          onToggle={() => setCollapsed((c) => !c)}
+          hospitalName={settings.hospitalName}
+          branch={settings.branch}
+          isAdmin={isAdmin}
+          isDoctor={isDoctor}
+        />
 
         <main
-          className={`flex-1 min-h-0 ${
+          className={`flex-1 min-h-0 min-w-0 ${
             currentPage === 'dashboard' ? 'overflow-hidden' : 'overflow-y-auto'
           }`}
         >
@@ -435,6 +459,7 @@ export default function App() {
                 onDelete={deleteAdmission}
                 physicians={physicianNames}
                 departmentByName={departmentByName}
+                physicianMeta={physicianMeta}
                 isDoctor={isDoctor}
                 physicianName={physicianName}
               />
