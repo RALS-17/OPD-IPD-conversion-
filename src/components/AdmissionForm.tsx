@@ -16,6 +16,10 @@ interface AdmissionFormProps {
   initialData?: Admission | null;
   physicians: string[];
   departmentByName?: Record<string, string>;
+  physicianMeta?: Record<
+    string,
+    { staffType?: string; specialization?: string; subSpecialization?: string }
+  >;
 }
 
 const emptyForm = {
@@ -42,6 +46,7 @@ function PhysicianPicker({
   onChange,
   physicians,
   departmentByName = {},
+  physicianMeta = {},
   fieldClass,
   labelClass,
   label,
@@ -50,6 +55,10 @@ function PhysicianPicker({
   onChange: (name: string) => void;
   physicians: string[];
   departmentByName?: Record<string, string>;
+  physicianMeta?: Record<
+    string,
+    { staffType?: string; specialization?: string; subSpecialization?: string }
+  >;
   fieldClass: string;
   labelClass: string;
   label: string;
@@ -157,6 +166,13 @@ function PhysicianPicker({
             ) : (
               filtered.map((p) => {
                 const d = (departmentByName[p] || '').trim();
+                const meta = physicianMeta[p];
+                const bits = [
+                  d,
+                  meta?.staffType,
+                  meta?.specialization,
+                  meta?.subSpecialization,
+                ].filter(Boolean);
                 return (
                   <button
                     key={p}
@@ -171,8 +187,10 @@ function PhysicianPicker({
                     }`}
                   >
                     <span className="block truncate">{p}</span>
-                    {d && (
-                      <span className="block text-[9.5px] text-slate-400 truncate">{d}</span>
+                    {bits.length > 0 && (
+                      <span className="block text-[9.5px] text-slate-400 truncate">
+                        {bits.join(' · ')}
+                      </span>
                     )}
                   </button>
                 );
@@ -192,6 +210,7 @@ export default function AdmissionForm({
   initialData,
   physicians,
   departmentByName = {},
+  physicianMeta = {},
 }: AdmissionFormProps) {
   const [form, setForm] = useState(emptyForm);
 
@@ -393,6 +412,7 @@ export default function AdmissionForm({
                 onChange={(name) => setForm((p) => ({ ...p, opdAttendingPhysician: name }))}
                 physicians={physicians}
                 departmentByName={departmentByName}
+                physicianMeta={physicianMeta}
                 fieldClass={field}
                 labelClass={labelCls}
               />
@@ -453,6 +473,7 @@ export default function AdmissionForm({
                 onChange={(name) => setForm((p) => ({ ...p, admittingPhysician: name }))}
                 physicians={physicians}
                 departmentByName={departmentByName}
+                physicianMeta={physicianMeta}
                 fieldClass={field}
                 labelClass={labelCls}
               />
