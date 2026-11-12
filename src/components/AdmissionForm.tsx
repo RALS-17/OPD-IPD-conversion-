@@ -33,10 +33,12 @@ const emptyForm = {
   diagnosis: '',
   advisedForAdmission: 'Yes' as YesNo,
   opdAttendingPhysician: '',
+  opdPatientStatus: 'New' as OldNew,
   actuallyAdmitted: 'No' as YesNo,
   dateOfAdmission: new Date().toISOString().split('T')[0],
   timeOfAdmission: new Date().toTimeString().slice(0, 5),
   admittingPhysician: '',
+  housePhysician: '',
   remarks: '',
 };
 
@@ -227,10 +229,12 @@ export default function AdmissionForm({
         diagnosis: initialData.diagnosis,
         advisedForAdmission: initialData.advisedForAdmission,
         opdAttendingPhysician: initialData.opdAttendingPhysician,
+        opdPatientStatus: initialData.opdPatientStatus || 'New',
         actuallyAdmitted: initialData.actuallyAdmitted,
         dateOfAdmission: initialData.dateOfAdmission,
         timeOfAdmission: initialData.timeOfAdmission || '',
         admittingPhysician: initialData.admittingPhysician,
+        housePhysician: initialData.housePhysician || '',
         remarks: initialData.remarks,
       });
     } else {
@@ -253,7 +257,7 @@ export default function AdmissionForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.patientName.trim() || !form.address.trim()) return;
+    if (!form.patientName.trim()) return;
     onSave(form);
     onClose();
   };
@@ -273,7 +277,7 @@ export default function AdmissionForm({
               {initialData ? 'Edit Admission Record' : 'New Admission Record'}
             </h2>
             <p className="text-[10px] text-slate-400 mt-0.5">
-              Only Patient Name and Address are required
+              Only Patient Name is required
             </p>
           </div>
           <button
@@ -285,7 +289,8 @@ export default function AdmissionForm({
         </div>
 
         <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
-          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2.5">
+          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-2.5">
+            {/* LEFT */}
             <div className="space-y-2.5">
               <div>
                 <label className={labelCls}>Patient Name *</label>
@@ -300,22 +305,9 @@ export default function AdmissionForm({
                 />
               </div>
 
-              <div>
-                <label className={labelCls}>Address *</label>
-                <input
-                  required
-                  name="address"
-                  value={form.address}
-                  onChange={handleChange}
-                  className={field}
-                  placeholder="Enter address"
-                  maxLength={200}
-                />
-              </div>
-
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className={labelCls}>Old / New</label>
+                  <label className={labelCls}>Old / New (Hospital)</label>
                   <select name="oldNew" value={form.oldNew} onChange={handleChange} className={field}>
                     <option value="New">New</option>
                     <option value="Old">Old</option>
@@ -360,7 +352,7 @@ export default function AdmissionForm({
                   value={form.chiefComplaint}
                   onChange={handleChange}
                   className={field}
-                  placeholder="Enter chief complaint"
+                  placeholder="Chief complaint"
                   maxLength={200}
                 />
               </div>
@@ -372,12 +364,26 @@ export default function AdmissionForm({
                   value={form.diagnosis}
                   onChange={handleChange}
                   className={field}
-                  placeholder="Enter diagnosis"
+                  placeholder="Diagnosis"
                   maxLength={200}
+                />
+              </div>
+
+              <div>
+                <label className={labelCls}>Remarks (HAMA/THOC)</label>
+                <textarea
+                  name="remarks"
+                  value={form.remarks}
+                  onChange={handleChange}
+                  rows={3}
+                  className={`${field} resize-none`}
+                  placeholder="Enter remarks (optional)"
+                  maxLength={300}
                 />
               </div>
             </div>
 
+            {/* RIGHT */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between py-0.5">
                 <label className="text-[11px] font-medium text-slate-600">Advised for Admission</label>
@@ -416,6 +422,22 @@ export default function AdmissionForm({
                 fieldClass={field}
                 labelClass={labelCls}
               />
+
+              <div>
+                <label className={labelCls}>Old / New to this OPD doctor</label>
+                <select
+                  name="opdPatientStatus"
+                  value={form.opdPatientStatus}
+                  onChange={handleChange}
+                  className={field}
+                >
+                  <option value="New">New to this doctor</option>
+                  <option value="Old">Old patient of this doctor</option>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Separate from hospital Old/New — e.g. returning patient, first time with this doctor.
+                </p>
+              </div>
 
               <div className="flex items-center justify-between py-0.5">
                 <label className="text-[11px] font-medium text-slate-600">Actually Admitted</label>
@@ -478,18 +500,16 @@ export default function AdmissionForm({
                 labelClass={labelCls}
               />
 
-              <div>
-                <label className={labelCls}>Remarks (HAMA/THOC)</label>
-                <textarea
-                  name="remarks"
-                  value={form.remarks}
-                  onChange={handleChange}
-                  rows={2}
-                  className={`${field} resize-none`}
-                  placeholder="Enter remarks (optional)"
-                  maxLength={300}
-                />
-              </div>
+              <PhysicianPicker
+                label="House Physician"
+                value={form.housePhysician}
+                onChange={(name) => setForm((p) => ({ ...p, housePhysician: name }))}
+                physicians={physicians}
+                departmentByName={departmentByName}
+                physicianMeta={physicianMeta}
+                fieldClass={field}
+                labelClass={labelCls}
+              />
             </div>
           </div>
 

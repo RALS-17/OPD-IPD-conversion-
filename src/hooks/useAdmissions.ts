@@ -230,10 +230,12 @@ function normalizeAdmission(raw: Partial<Admission> & { id: string }): Admission
     diagnosis: raw.diagnosis || '',
     advisedForAdmission: raw.advisedForAdmission || 'No',
     opdAttendingPhysician: raw.opdAttendingPhysician || '',
+    opdPatientStatus: raw.opdPatientStatus || 'New',
     actuallyAdmitted: raw.actuallyAdmitted || 'No',
     dateOfAdmission: raw.dateOfAdmission || '',
     timeOfAdmission: time || '00:00',
     admittingPhysician: raw.admittingPhysician || '',
+    housePhysician: raw.housePhysician || '',
     remarks: raw.remarks || '',
     createdAt: raw.createdAt || new Date().toISOString(),
   };
@@ -516,14 +518,21 @@ export function useAdmissions() {
     const cash = list.filter((a) => a.hhoCash === 'CASH').length;
     const walkIn = list.filter((a) => a.patientType === 'Walk-in').length;
     const privateCount = list.filter((a) => a.patientType === 'Private').length;
+    const oldCount = list.filter((a) => a.oldNew === 'Old').length;
+    const newCount = list.filter((a) => a.oldNew === 'New').length;
     const payTotal = hmo + cash || 1;
+    const oldNewTotal = oldCount + newCount || 1;
     return {
       hmo,
       cash,
       private: privateCount,
       walkIn,
+      old: oldCount,
+      new: newCount,
       hmoPct: Math.round((hmo / payTotal) * 1000) / 10,
       cashPct: Math.round((cash / payTotal) * 1000) / 10,
+      oldPct: Math.round((oldCount / oldNewTotal) * 1000) / 10,
+      newPct: Math.round((newCount / oldNewTotal) * 1000) / 10,
     };
   }, []);
 
@@ -598,15 +607,28 @@ export function useAdmissions() {
       if (a.actuallyAdmitted === 'Yes') byDay[day].admitted += 1;
     });
 
+    // Plot every day that has already occurred; future days stay off the chart.
+    // Days with no admissions show 0% so the line sits on the baseline.
+    const isCurrentMonth =
+      year === now.getFullYear() && month === now.getMonth();
+    const isFutureMonth =
+      year > now.getFullYear() ||
+      (year === now.getFullYear() && month > now.getMonth());
+    const lastDay = isFutureMonth
+      ? 0
+      : isCurrentMonth
+        ? Math.min(now.getDate(), daysInMonth)
+        : daysInMonth;
+
     const points: { day: number; value: number }[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
+    for (let d = 1; d <= lastDay; d++) {
       const { total, admitted } = byDay[d];
-      if (total > 0) {
-        points.push({
-          day: d,
-          value: Math.round((admitted / total) * 1000) / 10,
-        });
-      }
+      const raw =
+        total > 0 ? Math.round((admitted / total) * 1000) / 10 : 0;
+      points.push({
+        day: d,
+        value: Math.min(100, Math.max(0, raw)),
+      });
     }
     return { daysInMonth, points, year, month: month + 1 };
   }, [admissions]);
@@ -615,8 +637,7 @@ export function useAdmissions() {
     const source = list ?? admissions;
     const headers = [
       'Patient Name',
-      'Address',
-      'Old/New',
+      'Old/New (Hospital)',
       'HHO/CASH',
       'Source',
       'Chief Complaint',
@@ -626,13 +647,14 @@ export function useAdmissions() {
       'Date of Admission',
       'Time of Admission',
       'OPD Attending Physician',
+      'Old/New to OPD Doctor',
       'Admitting Physician',
+      'House Physician',
       'Remarks',
     ];
     const rows = source.map((a) =>
       [
         a.patientName,
-        a.address,
         a.oldNew,
         a.hhoCash,
         a.source,
@@ -643,7 +665,9 @@ export function useAdmissions() {
         a.dateOfAdmission,
         a.timeOfAdmission,
         a.opdAttendingPhysician,
+        a.opdPatientStatus,
         a.admittingPhysician,
+        a.housePhysician,
         a.remarks,
       ]
         .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)

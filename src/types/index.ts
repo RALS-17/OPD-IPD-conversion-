@@ -18,10 +18,13 @@ export interface Admission {
   diagnosis: string;
   advisedForAdmission: YesNo;
   opdAttendingPhysician: string;
+  /** Old/New relative to the OPD attending physician for this visit */
+  opdPatientStatus: OldNew;
   actuallyAdmitted: YesNo;
   dateOfAdmission: string;
   timeOfAdmission: string;
   admittingPhysician: string;
+  housePhysician: string;
   remarks: string;
   createdAt: string;
 }

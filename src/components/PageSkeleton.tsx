@@ -51,9 +51,9 @@ function DashboardSkeleton() {
         ))}
       </div>
 
-      {/* Mix: HMO · CASH · Private · Walk-in (4) */}
-      <div className="grid grid-cols-4 gap-1.5 shrink-0">
-        {[0, 1, 2, 3].map((i) => (
+      {/* Mix: Old · New · HMO · CASH · Private · Walk-in (6) */}
+      <div className="grid grid-cols-6 gap-1.5 shrink-0">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
           <KpiCardSkeleton key={i} />
         ))}
       </div>

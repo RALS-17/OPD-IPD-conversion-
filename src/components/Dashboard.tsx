@@ -9,6 +9,8 @@ import {
   Wallet,
   UserRound,
   Footprints,
+  UserPlus,
+  History,
 } from 'lucide-react';
 import type { Admission, PhysicianStats, RankedItem, SourceOfAdmission } from '../types';
 
@@ -17,8 +19,12 @@ interface MixStats {
   cash: number;
   private: number;
   walkIn: number;
+  old: number;
+  new: number;
   hmoPct: number;
   cashPct: number;
+  oldPct: number;
+  newPct: number;
 }
 
 interface MonthlyTrend {
@@ -101,21 +107,6 @@ function dateFilterLabel(
     default:
       return 'Selected period';
   }
-}
-
-function niceMax(peak: number): number {
-  if (peak <= 0) return 10;
-  // Pad ~15% above peak, then snap to a readable step
-  const padded = peak * 1.15;
-  if (padded <= 10) return 10;
-  if (padded <= 20) return 20;
-  if (padded <= 25) return 25;
-  if (padded <= 40) return 40;
-  if (padded <= 50) return 50;
-  if (padded <= 60) return 60;
-  if (padded <= 75) return 75;
-  if (padded <= 100) return 100;
-  return Math.ceil(padded / 10) * 10;
 }
 
 function buildYTicks(maxY: number): number[] {
@@ -221,12 +212,8 @@ export default function Dashboard({
   const plotH = chartH - padT - padB;
   const points = monthlyTrend.points || [];
   const prevPoints = prevMonthlyTrend?.points || [];
-  const peakValue = Math.max(
-    0,
-    ...points.map((d) => d.value),
-    ...(showPrevTrend ? prevPoints.map((d) => d.value) : [])
-  );
-  const maxY = niceMax(peakValue);
+  // Conversion rate is always 0–100%; keep axis fixed for accuracy
+  const maxY = 100;
   const daysInMonth = monthlyTrend.daysInMonth || 31;
   const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const monthLabel = monthNames[(monthlyTrend.month || 1) - 1] || '';
@@ -243,6 +230,16 @@ export default function Dashboard({
   const prevLinePoints =
     prevPoints.length > 0
       ? prevPoints.map((d) => `${xForDay(d.day)},${yForVal(d.value)}`).join(' ')
+      : '';
+  const baselineY = padT + plotH;
+  const areaPath =
+    points.length > 1
+      ? [
+          `M ${xForDay(points[0].day)} ${baselineY}`,
+          `L ${points.map((d) => `${xForDay(d.day)} ${yForVal(d.value)}`).join(' L ')}`,
+          `L ${xForDay(points[points.length - 1].day)} ${baselineY}`,
+          'Z',
+        ].join(' ')
       : '';
 
   const xTicks = [1, 5, 10, 15, 20, 25, daysInMonth].filter(
@@ -372,9 +369,25 @@ export default function Dashboard({
         })}
       </div>
 
-      {/* Patient & payment mix */}
-      <div className="grid grid-cols-4 gap-1.5 shrink-0">
+      {/* Patient status, type & payment mix */}
+      <div className="grid grid-cols-6 gap-1.5 shrink-0">
         {[
+          {
+            icon: History,
+            color: 'bg-slate-100 text-slate-600',
+            label: 'Old',
+            value: mix.old,
+            sub: `${mix.oldPct}% of patients`,
+            subColor: 'text-slate-500',
+          },
+          {
+            icon: UserPlus,
+            color: 'bg-emerald-50 text-emerald-600',
+            label: 'New',
+            value: mix.new,
+            sub: `${mix.newPct}% of patients`,
+            subColor: 'text-emerald-600',
+          },
           {
             icon: Shield,
             color: 'bg-blue-50 text-[#1348f3]',
@@ -534,6 +547,12 @@ export default function Dashboard({
                     className="w-full h-full"
                     preserveAspectRatio="xMidYMid meet"
                   >
+                    <defs>
+                      <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#0d9f6e" stopOpacity="0.45" />
+                        <stop offset="100%" stopColor="#0d9f6e" stopOpacity="0.02" />
+                      </linearGradient>
+                    </defs>
                     {/* Horizontal grid + Y labels */}
                     {yTicks.map((tick) => {
                       const y = yForVal(tick);
@@ -585,6 +604,10 @@ export default function Dashboard({
                         points={prevLinePoints}
                         opacity={0.85}
                       />
+                    )}
+                    {/* Green shade under current line */}
+                    {areaPath && (
+                      <path d={areaPath} fill="url(#trendFill)" opacity="0.35" />
                     )}
                     {/* Current period line */}
                     {points.length > 1 && (
@@ -945,6 +968,12 @@ export default function Dashboard({
                         className="w-full h-full"
                         preserveAspectRatio="xMidYMid meet"
                       >
+                        <defs>
+                          <linearGradient id="trendFillZoom" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#0d9f6e" stopOpacity="0.45" />
+                            <stop offset="100%" stopColor="#0d9f6e" stopOpacity="0.02" />
+                          </linearGradient>
+                        </defs>
                         {yTicks.map((t) => (
                           <g key={t}>
                             <line
@@ -989,6 +1018,9 @@ export default function Dashboard({
                             points={prevLinePoints}
                             opacity={0.85}
                           />
+                        )}
+                        {areaPath && (
+                          <path d={areaPath} fill="url(#trendFillZoom)" opacity="0.35" />
                         )}
                         {points.length > 1 && (
                           <polyline

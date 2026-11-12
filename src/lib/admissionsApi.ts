@@ -20,10 +20,12 @@ export function fromRow(row: Record<string, unknown>): Admission {
     diagnosis: String(row.diagnosis ?? ''),
     advisedForAdmission: (row.advised_for_admission as Admission['advisedForAdmission']) || 'No',
     opdAttendingPhysician: String(row.opd_attending_physician ?? ''),
+    opdPatientStatus: (row.opd_patient_status as Admission['opdPatientStatus']) || 'New',
     actuallyAdmitted: (row.actually_admitted as Admission['actuallyAdmitted']) || 'No',
     dateOfAdmission: row.date_of_admission ? String(row.date_of_admission).slice(0, 10) : '',
     timeOfAdmission: time,
     admittingPhysician: String(row.admitting_physician ?? ''),
+    housePhysician: String(row.house_physician ?? ''),
     remarks: String(row.remarks ?? ''),
     createdAt: String(row.created_at ?? new Date().toISOString()),
   };
@@ -42,10 +44,12 @@ export function toRow(a: Partial<Admission>) {
     diagnosis: a.diagnosis ?? '',
     advised_for_admission: a.advisedForAdmission ?? 'No',
     opd_attending_physician: a.opdAttendingPhysician ?? '',
+    opd_patient_status: a.opdPatientStatus ?? 'New',
     actually_admitted: a.actuallyAdmitted ?? 'No',
     date_of_admission: a.dateOfAdmission || null,
     time_of_admission: a.timeOfAdmission || null,
     admitting_physician: a.admittingPhysician ?? '',
+    house_physician: a.housePhysician ?? '',
     remarks: a.remarks ?? '',
   };
 }

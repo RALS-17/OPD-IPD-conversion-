@@ -13,6 +13,7 @@ import {
 import type { Admission, YesNo } from '../types';
 import { formatTime12 } from '../hooks/useAdmissions';
 import AdmissionForm from './AdmissionForm';
+import SearchablePhysicianSelect from './SearchablePhysicianSelect';
 
 const VIEWS_KEY = 'opd-ipd-admission-views';
 const PENDING_DAYS = 3;
@@ -178,7 +179,9 @@ export default function AdmissionLog({
         a.patientName.toLowerCase().includes(q) ||
         a.diagnosis.toLowerCase().includes(q) ||
         a.chiefComplaint.toLowerCase().includes(q) ||
-        a.opdAttendingPhysician.toLowerCase().includes(q);
+        a.opdAttendingPhysician.toLowerCase().includes(q) ||
+        (a.admittingPhysician || '').toLowerCase().includes(q) ||
+        (a.housePhysician || '').toLowerCase().includes(q);
 
       const matchesSource = filterSource === 'All' || a.source === filterSource;
       const matchesAdvised =
@@ -516,18 +519,14 @@ export default function AdmissionLog({
               <option value="Yes">Admitted: Yes</option>
               <option value="No">Admitted: No</option>
             </select>
-            <select
+            <SearchablePhysicianSelect
               value={filterPhysician}
-              onChange={(e) => setFilterPhysician(e.target.value)}
-              className="text-[12px] border border-slate-200 rounded-md px-2 py-2 sm:py-1.5 text-slate-600 bg-white focus:outline-none col-span-2 sm:col-span-1 min-w-0 sm:min-w-[150px]"
-            >
-              <option value="All">All Physicians</option>
-              {physicianOptions.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+              onChange={setFilterPhysician}
+              options={physicianOptions}
+              allValue="All"
+              allLabel="All Physicians"
+              className="col-span-2 sm:col-span-1"
+            />
             {hasActiveFilters && (
               <button
                 type="button"
@@ -609,14 +608,8 @@ export default function AdmissionLog({
                       {a.diagnosis || a.chiefComplaint || '—'}
                     </p>
                     <p className="text-[10px] text-slate-500 mt-0.5 truncate">
-                      OPD: {a.opdAttendingPhysician || '—'}
+                      OPD: {a.opdAttendingPhysician || '—'} · To Dr: {a.opdPatientStatus || 'New'} · HP: {a.housePhysician || '—'}
                     </p>
-                    {!!issues?.labels.length && (
-                      <p className="mt-1.5 text-[10px] font-medium text-amber-800 flex items-center gap-1">
-                        <AlertTriangle size={11} />
-                        {issues.labels.join(' · ')}
-                      </p>
-                    )}
                   </div>
                 );
               })}
@@ -627,8 +620,7 @@ export default function AdmissionLog({
               <table className="w-full text-[11.5px]">
                 <thead className="sticky top-0 bg-slate-50 z-10">
                   <tr className="text-left text-slate-500 border-b border-slate-100">
-                    <th className="px-3 py-2 font-semibold text-[10px] w-6" />
-                    <th className="px-3 py-2 font-semibold text-[10px]">Patient Name</th>
+                    <th className="px-3 py-2 font-semibold text-[10px] min-w-[140px]">Patient Name</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">Old/New</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">HMO/CASH</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">Type</th>
@@ -639,7 +631,9 @@ export default function AdmissionLog({
                     <th className="px-2 py-2 font-semibold text-[10px]">Admitted</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">Date / Time</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">OPD Physician</th>
+                    <th className="px-2 py-2 font-semibold text-[10px]">To OPD Dr</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">Admitting Physician</th>
+                    <th className="px-2 py-2 font-semibold text-[10px]">House Physician</th>
                     <th className="px-2 py-2 font-semibold text-[10px] text-right">Actions</th>
                   </tr>
                 </thead>
@@ -655,24 +649,10 @@ export default function AdmissionLog({
                         }`}
                         title={issues?.labels.join(' · ') || undefined}
                       >
-                        <td className="px-2 py-1.5 text-center">
-                          {hasIssue && (
-                            <AlertTriangle
-                              size={12}
-                              className="text-amber-500 inline-block"
-                              aria-label={issues?.labels.join(', ')}
-                            />
-                          )}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <div>
-                            <p className="font-medium text-slate-800 text-[11.5px] leading-tight">
-                              {a.patientName}
-                            </p>
-                            <p className="text-[9.5px] text-slate-400 truncate max-w-[140px] leading-tight">
-                              {a.address}
-                            </p>
-                          </div>
+                        <td className="px-3 py-1.5 max-w-[200px]">
+                          <p className="font-medium text-slate-800 text-[11.5px] leading-tight truncate" title={a.patientName}>
+                            {a.patientName}
+                          </p>
                         </td>
                         <td className="px-2 py-1.5">
                           <span
@@ -749,8 +729,22 @@ export default function AdmissionLog({
                             <span className="text-amber-600 font-medium">Missing</span>
                           )}
                         </td>
+                        <td className="px-2 py-1.5 whitespace-nowrap">
+                          <span
+                            className={`inline-flex px-1.5 py-0.5 rounded text-[9.5px] font-semibold ${
+                              a.opdPatientStatus === 'Old'
+                                ? 'bg-slate-100 text-slate-700'
+                                : 'bg-emerald-50 text-emerald-700'
+                            }`}
+                          >
+                            {a.opdPatientStatus === 'Old' ? 'Old' : 'New'}
+                          </span>
+                        </td>
                         <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap">
                           {a.admittingPhysician || '—'}
+                        </td>
+                        <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap">
+                          {a.housePhysician || '—'}
                         </td>
                         <td className="px-2 py-1.5">
                           <div className="flex items-center justify-end">
