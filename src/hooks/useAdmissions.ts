@@ -718,4 +718,26 @@ export function useAdmissions() {
     clearAllData,
     reloadSampleData,
     exportCsv,
-    getPhysician
+    getPhysicianStats,
+    getKpis,
+    getMix,
+    getTopDiagnoses,
+    getTopComplaints,
+    getMonthlyTrend,
+    setAuditActor,
+    loaded,
+    usingSupabase: isSupabaseConfigured,
+  };
+}
+
+/** Format HH:mm to 12h display e.g. 10:24 → 10:24 AM */
+export function formatTime12(time: string): string {
+  if (!time) return '—';
+  const [hStr, mStr] = time.split(':');
+  let h = parseInt(hStr, 10);
+  const m = mStr || '00';
+  if (isNaN(h)) return time;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m} ${ampm}`;
+}
