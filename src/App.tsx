@@ -277,18 +277,69 @@ export default function App() {
   const prevAdmissions = prevRangeInfo
     ? filterByDateRange(roleScopedAdmissions, prevRangeInfo.from, prevRangeInfo.to)
     : [];
-  const prevKpis = prevRangeInfo ? getKpis(prevAdmissions) : null;
-  const prevMonthlyTrend = prevRangeInfo ? getMonthlyTrend(prevAdmissions) : null;
-
-  const kpis = getKpis(filteredAdmissions);
-  const mix = getMix(filteredAdmissions);
-  const physicianStats = applyOpdConsultOverrides(
-    getPhysicianStats(filteredAdmissions),
-    opdOverrides
+  const prevPhysicianStats = prevRangeInfo
+    ? applyOpdConsultOverrides(getPhysicianStats(prevAdmissions), opdOverrides)
+    : [];
+  const prevBaseKpis = prevRangeInfo ? getKpis(prevAdmissions) : null;
+  const prevTotalOpd = prevPhysicianStats.reduce((sum, p) => sum + p.totalOpdConsults, 0);
+  const prevKpis = prevBaseKpis
+    ? {
+        ...prevBaseKpis,
+        totalOpd: prevTotalOpd,
+        conversion:
+          prevTotalOpd > 0
+            ? Math.round((prevBaseKpis.actual / prevTotalOpd) * 1000) / 10
+            : 0,
+      }
+    : null;
+  const prevSystemTotalOpd = prevPhysicianStats.reduce(
+    (sum, p) => sum + (p.systemOpdConsults ?? p.totalOpdConsults),
+    0
   );
+  // After overrides, totalOpdConsults is the effective total; systemOpdConsults may be set by applyOpdConsultOverrides
+  const prevMonthlyTrendRaw = prevRangeInfo ? getMonthlyTrend(prevAdmissions) : null;
+  const prevConversionScale =
+    prevTotalOpd > 0 && prevSystemTotalOpd > 0
+      ? prevSystemTotalOpd / prevTotalOpd
+      : 1;
+  const prevMonthlyTrend = prevMonthlyTrendRaw
+    ? {
+        ...prevMonthlyTrendRaw,
+        points: prevMonthlyTrendRaw.points.map((pt) => ({
+          ...pt,
+          value: Math.min(100, Math.round(pt.value * prevConversionScale * 10) / 10),
+        })),
+      }
+    : null;
+
+  const mix = getMix(filteredAdmissions);
+  const systemPhysicianStats = getPhysicianStats(filteredAdmissions);
+  const physicianStats = applyOpdConsultOverrides(systemPhysicianStats, opdOverrides);
+  // Total OPD + conversion use per-physician totals (includes Physician Summary edits)
+  const baseKpis = getKpis(filteredAdmissions);
+  const systemTotalOpd = systemPhysicianStats.reduce((sum, p) => sum + p.totalOpdConsults, 0);
+  const totalOpd = physicianStats.reduce((sum, p) => sum + p.totalOpdConsults, 0);
+  const kpis = {
+    ...baseKpis,
+    totalOpd,
+    conversion:
+      totalOpd > 0
+        ? Math.round((baseKpis.actual / totalOpd) * 1000) / 10
+        : 0,
+  };
   const topDiagnoses = getTopDiagnoses(filteredAdmissions, 10);
-  const monthlyTrend = getMonthlyTrend(filteredAdmissions);
-  const summaryPhysicianStats = getPhysicianStats(filteredAdmissions);
+  // Scale daily conversion so trend matches override-aware overall rate
+  const conversionScale =
+    totalOpd > 0 && systemTotalOpd > 0 ? systemTotalOpd / totalOpd : 1;
+  const monthlyTrendRaw = getMonthlyTrend(filteredAdmissions);
+  const monthlyTrend = {
+    ...monthlyTrendRaw,
+    points: monthlyTrendRaw.points.map((pt) => ({
+      ...pt,
+      value: Math.min(100, Math.round(pt.value * conversionScale * 10) / 10),
+    })),
+  };
+  const summaryPhysicianStats = systemPhysicianStats;
 
   const handleExportFiltered = () => {
     exportCsv(filteredAdmissions);

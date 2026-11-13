@@ -191,14 +191,15 @@ export default function Dashboard({
     return () => window.removeEventListener('keydown', onKey);
   }, [zoomSection]);
 
-  const gaugeStats = useMemo(() => {
-    const list = filteredAdmissions;
-    const total = list.length;
-    const admitted = list.filter((a) => a.actuallyAdmitted === 'Yes').length;
-    const conversion =
-      total > 0 ? Math.round((admitted / total) * 1000) / 10 : 0;
-    return { total, admitted, conversion };
-  }, [filteredAdmissions]);
+  // Same numbers as KPI cards (includes manual Total OPD edits)
+  const gaugeStats = useMemo(
+    () => ({
+      total: kpis.totalOpd,
+      admitted: kpis.actual,
+      conversion: kpis.conversion,
+    }),
+    [kpis.totalOpd, kpis.actual, kpis.conversion]
+  );
 
   const sourceLabel =
     sourceFilter === 'All' ? 'All sources' : sourceFilter;
@@ -329,7 +330,7 @@ export default function Dashboard({
           {
             icon: Users,
             color: 'bg-blue-50 text-[#1348f3]',
-            label: 'From OPD',
+            label: 'Total OPD',
             value: kpis.totalOpd,
             prev: prevKpis?.totalOpd,
             suffix: '',
