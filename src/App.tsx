@@ -277,10 +277,17 @@ export default function App() {
   const prevAdmissions = prevRangeInfo
     ? filterByDateRange(roleScopedAdmissions, prevRangeInfo.from, prevRangeInfo.to)
     : [];
+  const prevSystemPhysicianStats = prevRangeInfo
+    ? getPhysicianStats(prevAdmissions)
+    : [];
   const prevPhysicianStats = prevRangeInfo
-    ? applyOpdConsultOverrides(getPhysicianStats(prevAdmissions), opdOverrides)
+    ? applyOpdConsultOverrides(prevSystemPhysicianStats, opdOverrides)
     : [];
   const prevBaseKpis = prevRangeInfo ? getKpis(prevAdmissions) : null;
+  const prevSystemTotalOpd = prevSystemPhysicianStats.reduce(
+    (sum, p) => sum + p.totalOpdConsults,
+    0
+  );
   const prevTotalOpd = prevPhysicianStats.reduce((sum, p) => sum + p.totalOpdConsults, 0);
   const prevKpis = prevBaseKpis
     ? {
@@ -292,10 +299,6 @@ export default function App() {
             : 0,
       }
     : null;
-  const prevSystemTotalOpd = prevPhysicianStats.reduce(
-    (sum, p) => sum + (p.systemOpdConsults ?? p.totalOpdConsults),
-    0
-  );
   // After overrides, totalOpdConsults is the effective total; systemOpdConsults may be set by applyOpdConsultOverrides
   const prevMonthlyTrendRaw = prevRangeInfo ? getMonthlyTrend(prevAdmissions) : null;
   const prevConversionScale =
