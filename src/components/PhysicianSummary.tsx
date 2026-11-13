@@ -17,6 +17,12 @@ interface PhysicianSummaryProps {
   onOpdOverridesChange?: (map: OpdConsultOverrides) => void;
   /** Controlled overrides from parent; if omitted, loads from localStorage */
   opdOverrides?: OpdConsultOverrides;
+  datePreset?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  onDatePreset?: (preset: string) => void;
+  onDateFrom?: (v: string) => void;
+  onDateTo?: (v: string) => void;
 }
 
 export default function PhysicianSummary({
@@ -26,6 +32,12 @@ export default function PhysicianSummary({
   onPhysicianClick,
   onOpdOverridesChange,
   opdOverrides: controlledOverrides,
+  datePreset = 'month',
+  dateFrom = '',
+  dateTo = '',
+  onDatePreset,
+  onDateFrom,
+  onDateTo,
 }: PhysicianSummaryProps) {
   const [localOverrides, setLocalOverrides] = useState<OpdConsultOverrides>(() =>
     loadOpdConsultOverrides()
@@ -34,11 +46,14 @@ export default function PhysicianSummary({
 
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [doctorSearch, setDoctorSearch] = useState('');
 
-  const displayStats = useMemo(
-    () => applyOpdConsultOverrides(stats, overrides),
-    [stats, overrides]
-  );
+  const displayStats = useMemo(() => {
+    const base = applyOpdConsultOverrides(stats, overrides);
+    const q = doctorSearch.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((s) => s.physician.toLowerCase().includes(q));
+  }, [stats, overrides, doctorSearch]);
 
   const avgConversion =
     displayStats.length > 0
@@ -86,6 +101,57 @@ export default function PhysicianSummary({
         <p className="text-slate-500 text-[11.5px] mt-0.5">
           Track OPD conversion performance and admission outcomes.
         </p>
+      </div>
+
+      <div className="shrink-0 flex flex-wrap items-center gap-1.5 justify-between">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(['today', 'week', 'month', 'all', 'custom'] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onDatePreset?.(p)}
+              className={`px-2 py-1 text-[10px] font-semibold rounded-md border ${
+                datePreset === p
+                  ? 'bg-[#1348f3] text-white border-[#1348f3]'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {p === 'today'
+                ? 'Today'
+                : p === 'week'
+                  ? '7 days'
+                  : p === 'month'
+                    ? 'This month'
+                    : p === 'all'
+                      ? 'All'
+                      : 'Custom'}
+            </button>
+          ))}
+          {datePreset === 'custom' && (
+            <>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => onDateFrom?.(e.target.value)}
+                className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1"
+              />
+              <span className="text-[10px] text-slate-400">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => onDateTo?.(e.target.value)}
+                className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1"
+              />
+            </>
+          )}
+        </div>
+        <input
+          type="text"
+          value={doctorSearch}
+          onChange={(e) => setDoctorSearch(e.target.value)}
+          placeholder="Search doctor…"
+          className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white min-w-[180px] focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 shrink-0">

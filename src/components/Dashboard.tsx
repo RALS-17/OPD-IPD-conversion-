@@ -12,7 +12,7 @@ import {
   UserPlus,
   History,
 } from 'lucide-react';
-import type { Admission, PhysicianStats, RankedItem, SourceOfAdmission } from '../types';
+import type { Admission, PhysicianStats, RankedItem } from '../types';
 
 interface MixStats {
   hmo: number;
@@ -33,8 +33,6 @@ interface MonthlyTrend {
   year: number;
   month: number;
 }
-
-type GaugeSource = 'OPD' | 'ER';
 
 type KpiBlock = {
   totalOpd: number;
@@ -63,6 +61,8 @@ interface DashboardProps {
   onDatePreset: (preset: string) => void;
   onDateFrom: (v: string) => void;
   onDateTo: (v: string) => void;
+  sourceFilter?: 'All' | 'OPD' | 'ER' | 'Direct';
+  onSourceFilter?: (v: 'All' | 'OPD' | 'ER' | 'Direct') => void;
   onExport: () => void;
   onPrintSnapshot?: () => void;
   filteredCount: number;
@@ -137,6 +137,8 @@ export default function Dashboard({
   onDatePreset,
   onDateFrom,
   onDateTo,
+  sourceFilter = 'All',
+  onSourceFilter,
   onExport,
   onPrintSnapshot,
   filteredCount,
@@ -146,8 +148,7 @@ export default function Dashboard({
   const topPhysicians = physicianStats.slice(0, 5);
   const periodLabel = dateFilterLabel(datePreset, dateFrom, dateTo);
 
-  // Gauge source mode: OPD → IPD (default) or ER → IPD
-  const [gaugeSource, setGaugeSource] = useState<GaugeSource>('OPD');
+  // Conversion gauge uses dashboard source filter (All / OPD / ER / Direct)
   const [hoverPoint, setHoverPoint] = useState<{ day: number; value: number; x: number; y: number } | null>(null);
   const [showPrevTrend, setShowPrevTrend] = useState(true);
   type ZoomSection = 'gauge' | 'trend' | 'physicians' | 'diagnoses';
@@ -191,15 +192,20 @@ export default function Dashboard({
   }, [zoomSection]);
 
   const gaugeStats = useMemo(() => {
-    const list = filteredAdmissions.filter(
-      (a) => a.source === (gaugeSource as SourceOfAdmission)
-    );
+    const list = filteredAdmissions;
     const total = list.length;
     const admitted = list.filter((a) => a.actuallyAdmitted === 'Yes').length;
     const conversion =
       total > 0 ? Math.round((admitted / total) * 1000) / 10 : 0;
     return { total, admitted, conversion };
-  }, [filteredAdmissions, gaugeSource]);
+  }, [filteredAdmissions]);
+
+  const sourceLabel =
+    sourceFilter === 'All' ? 'All sources' : sourceFilter;
+  const conversionTitle =
+    sourceFilter === 'All'
+      ? 'Admission Conversion'
+      : `${sourceFilter} → IPD Conversion`;
 
   // Chart geometry (single SVG so line + dots share coordinates)
   const chartW = 400;
@@ -283,6 +289,19 @@ export default function Dashboard({
               />
             </>
           )}
+          <select
+            value={sourceFilter}
+            onChange={(e) =>
+              onSourceFilter?.(e.target.value as 'All' | 'OPD' | 'ER' | 'Direct')
+            }
+            className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1 text-slate-600 bg-white focus:outline-none"
+            title="Filter by source of admission"
+          >
+            <option value="All">All sources</option>
+            <option value="OPD">OPD</option>
+            <option value="ER">ER</option>
+            <option value="Direct">Direct</option>
+          </select>
           <span className="text-[10px] text-slate-400 ml-1">{filteredCount} records</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -457,24 +476,8 @@ export default function Dashboard({
                   title="Double-click to enlarge"
                   onDoubleClick={() => setZoomSection('gauge')}
                 >
-                  {gaugeSource === 'OPD' ? 'OPD → IPD' : 'ER → IPD'} Conversion
+                  {conversionTitle}
                 </h3>
-                <div className="flex items-center gap-0.5 shrink-0">
-                  {(['OPD', 'ER'] as const).map((src) => (
-                    <button
-                      key={src}
-                      type="button"
-                      onClick={() => setGaugeSource(src)}
-                      className={`px-1.5 py-0.5 text-[9px] font-semibold rounded border transition-colors ${
-                        gaugeSource === src
-                          ? 'bg-[#1348f3] text-white border-[#1348f3]'
-                          : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      {src}
-                    </button>
-                  ))}
-                </div>
               </div>
               <div className="flex-1 flex flex-col items-center justify-center min-h-0">
                 <div className="relative w-full max-w-[200px] aspect-[2/1.1]">
@@ -498,15 +501,15 @@ export default function Dashboard({
                   <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
                     <span className="text-[26px] font-bold text-slate-900 leading-none">{gaugeStats.conversion}%</span>
                     <span className="text-[10px] text-slate-500">
-                      {gaugeSource === 'OPD' ? 'OPD → IPD' : 'ER → IPD'} rate
+                      {sourceFilter === 'All' ? 'Overall' : sourceFilter} rate
                     </span>
                   </div>
                 </div>
                 <div className="mt-1.5 flex items-center gap-0.5 text-[10px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full">
-                  {gaugeStats.admitted} admitted / {gaugeStats.total} {gaugeSource} · {periodLabel}
+                  {gaugeStats.admitted} admitted / {gaugeStats.total} · {sourceLabel} · {periodLabel}
                 </div>
                 <p className="mt-1 text-[9.5px] text-slate-500 text-center">
-                  {`Target: ≥ ${targetConversion}% · Direct excluded`}
+                  {`Target: ≥ ${targetConversion}%`}
                 </p>
               </div>
             </div>
@@ -867,8 +870,7 @@ export default function Dashboard({
           <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden">
             <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 shrink-0">
               <h2 className="text-[15px] font-bold text-slate-900">
-                {zoomSection === 'gauge' &&
-                  `${gaugeSource === 'OPD' ? 'OPD → IPD' : 'ER → IPD'} Conversion`}
+                {zoomSection === 'gauge' && conversionTitle}
                 {zoomSection === 'trend' && 'Monthly Conversion Rate Trend'}
                 {zoomSection === 'physicians' && 'Top 5 Physicians by Conversion Rate'}
                 {zoomSection === 'diagnoses' &&
@@ -886,22 +888,6 @@ export default function Dashboard({
             <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-6">
               {zoomSection === 'gauge' && (
                 <div className="flex flex-col items-center justify-center min-h-[280px]">
-                  <div className="flex items-center gap-1 mb-3">
-                    {(['OPD', 'ER'] as const).map((src) => (
-                      <button
-                        key={src}
-                        type="button"
-                        onClick={() => setGaugeSource(src)}
-                        className={`px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors ${
-                          gaugeSource === src
-                            ? 'bg-[#1348f3] text-white border-[#1348f3]'
-                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        {src}
-                      </button>
-                    ))}
-                  </div>
                   <div className="relative w-full max-w-[360px] aspect-[2/1.1]">
                     <svg viewBox="0 0 200 110" className="w-full h-full">
                       <path
@@ -931,15 +917,15 @@ export default function Dashboard({
                         {gaugeStats.conversion}%
                       </span>
                       <span className="text-[12px] text-slate-500 mt-1">
-                        {gaugeSource === 'OPD' ? 'OPD → IPD' : 'ER → IPD'} rate
+                        {sourceFilter === 'All' ? 'Overall' : sourceFilter} rate
                       </span>
                     </div>
                   </div>
                   <p className="mt-3 text-[13px] font-medium text-slate-600">
-                    {gaugeStats.admitted} admitted / {gaugeStats.total} {gaugeSource} · {periodLabel}
+                    {gaugeStats.admitted} admitted / {gaugeStats.total} · {sourceLabel} · {periodLabel}
                   </p>
                   <p className="mt-1 text-[12px] text-slate-500">
-                    Target: ≥ {targetConversion}% · Direct excluded
+                    Target: ≥ {targetConversion}%
                   </p>
                 </div>
               )}

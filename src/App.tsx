@@ -92,6 +92,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [datePreset, setDatePreset] = useState<DatePreset>('month');
+  const [sourceFilter, setSourceFilter] = useState<'All' | 'OPD' | 'ER' | 'Direct'>('All');
   const [dateFrom, setDateFrom] = useState(() => rangeForPreset('month')?.from || '');
   const [dateTo, setDateTo] = useState(() => rangeForPreset('month')?.to || '');
   const [drillPhysician, setDrillPhysician] = useState<string | null>(null);
@@ -262,11 +263,15 @@ export default function App() {
       ? { from: dateFrom || undefined, to: dateTo || undefined }
       : rangeForPreset(datePreset);
 
-  const filteredAdmissions = filterByDateRange(
+  const dateFilteredAdmissions = filterByDateRange(
     roleScopedAdmissions,
     activeRange?.from,
     activeRange?.to
   );
+  const filteredAdmissions =
+    sourceFilter === 'All'
+      ? dateFilteredAdmissions
+      : dateFilteredAdmissions.filter((a) => a.source === sourceFilter);
 
   const prevRangeInfo = previousRange(datePreset, dateFrom, dateTo);
   const prevAdmissions = prevRangeInfo
@@ -283,7 +288,7 @@ export default function App() {
   );
   const topDiagnoses = getTopDiagnoses(filteredAdmissions, 10);
   const monthlyTrend = getMonthlyTrend(filteredAdmissions);
-  const summaryPhysicianStats = getPhysicianStats(roleScopedAdmissions);
+  const summaryPhysicianStats = getPhysicianStats(filteredAdmissions);
 
   const handleExportFiltered = () => {
     exportCsv(filteredAdmissions);
@@ -444,6 +449,8 @@ export default function App() {
                 onDatePreset={handleDatePreset}
                 onDateFrom={setDateFrom}
                 onDateTo={setDateTo}
+                sourceFilter={sourceFilter}
+                onSourceFilter={setSourceFilter}
                 onExport={handleExportFiltered}
                 onPrintSnapshot={handlePrintSnapshot}
                 filteredCount={filteredAdmissions.length}
@@ -473,6 +480,12 @@ export default function App() {
                 onPhysicianClick={(name) => setDrillPhysician(name)}
                 opdOverrides={opdOverrides}
                 onOpdOverridesChange={setOpdOverrides}
+                datePreset={datePreset}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onDatePreset={handleDatePreset}
+                onDateFrom={setDateFrom}
+                onDateTo={setDateTo}
               />
             )}
             {currentPage === 'physicians' && !isDoctor && (

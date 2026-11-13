@@ -34,6 +34,7 @@ export default function Physicians({
 }: PhysiciansProps) {
   const [deptFilter, setDeptFilter] = useState('All');
   const [staffFilter, setStaffFilter] = useState<'All' | PhysicianStaffType>('All');
+  const [search, setSearch] = useState('');
 
   const [newName, setNewName] = useState('');
   const [newDept, setNewDept] = useState<string>(DEPARTMENTS[0]);
@@ -64,12 +65,17 @@ export default function Physicians({
   }, [physicians]);
 
   const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return physicians.filter((p) => {
       if (deptFilter !== 'All' && p.department !== deptFilter) return false;
       if (staffFilter !== 'All' && (p.staffType || 'Active') !== staffFilter) return false;
+      if (q) {
+        const hay = `${p.name} ${p.department} ${p.specialization || ''} ${p.subSpecialization || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
-  }, [physicians, deptFilter, staffFilter]);
+  }, [physicians, deptFilter, staffFilter, search]);
 
   const showMsg = (t: string) => {
     setMessage(t);
@@ -331,6 +337,13 @@ export default function Physicians({
             {filtered.length} physician{filtered.length !== 1 ? 's' : ''}
           </p>
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search doctor…"
+              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white min-w-[160px] focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
+            />
             <div className="flex items-center gap-1.5">
               <label className="text-[11px] text-slate-500">Staff</label>
               <select
