@@ -2,7 +2,16 @@ import type { Physician, PhysicianStaffType, PhysicianWriteFields } from '../typ
 import { supabase, isSupabaseConfigured } from './supabase';
 
 function asStaffType(v: unknown): PhysicianStaffType {
-  return String(v).toLowerCase() === 'visiting' ? 'Visiting' : 'Active';
+  const s = String(v || '').toLowerCase().trim();
+  if (s === 'visiting') return 'Visiting';
+  if (s === 'house physician' || s === 'house_physician' || s === 'house') return 'House Physician';
+  return 'Active';
+}
+
+function toStaffTypeDb(t: PhysicianStaffType): string {
+  if (t === 'Visiting') return 'Visiting';
+  if (t === 'House Physician') return 'House Physician';
+  return 'Active';
 }
 
 export function fromPhysicianRow(row: Record<string, unknown>): Physician {
@@ -56,7 +65,7 @@ export async function insertPhysician(fields: PhysicianWriteFields): Promise<Phy
     .insert({
       name: fields.name.trim(),
       department: fields.department.trim(),
-      staff_type: fields.staffType === 'Visiting' ? 'Visiting' : 'Active',
+      staff_type: toStaffTypeDb(fields.staffType),
       specialization: (fields.specialization || '').trim(),
       sub_specialization: (fields.subSpecialization || '').trim(),
       active: true,
@@ -76,7 +85,7 @@ export async function updatePhysician(
   if (fields.name !== undefined) payload.name = fields.name.trim();
   if (fields.department !== undefined) payload.department = fields.department.trim();
   if (fields.staffType !== undefined) {
-    payload.staff_type = fields.staffType === 'Visiting' ? 'Visiting' : 'Active';
+    payload.staff_type = toStaffTypeDb(fields.staffType);
   }
   if (fields.specialization !== undefined) {
     payload.specialization = fields.specialization.trim();

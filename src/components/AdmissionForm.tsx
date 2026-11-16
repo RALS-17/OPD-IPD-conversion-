@@ -15,6 +15,8 @@ interface AdmissionFormProps {
   onSave: (data: Omit<Admission, 'id' | 'createdAt'>) => void;
   initialData?: Admission | null;
   physicians: string[];
+  /** House Physician roster only (separate from clinical list) */
+  housePhysicians?: string[];
   departmentByName?: Record<string, string>;
   physicianMeta?: Record<
     string,
@@ -56,6 +58,8 @@ function PhysicianPicker({
   value: string;
   onChange: (name: string) => void;
   physicians: string[];
+  /** House Physician roster only (separate from clinical list) */
+  housePhysicians?: string[];
   departmentByName?: Record<string, string>;
   physicianMeta?: Record<
     string,
@@ -211,6 +215,7 @@ export default function AdmissionForm({
   onSave,
   initialData,
   physicians,
+  housePhysicians = [],
   departmentByName = {},
   physicianMeta = {},
 }: AdmissionFormProps) {
@@ -504,7 +509,7 @@ export default function AdmissionForm({
                 label="House Physician"
                 value={form.housePhysician}
                 onChange={(name) => setForm((p) => ({ ...p, housePhysician: name }))}
-                physicians={physicians}
+                physicians={housePhysicians}
                 departmentByName={departmentByName}
                 physicianMeta={physicianMeta}
                 fieldClass={field}

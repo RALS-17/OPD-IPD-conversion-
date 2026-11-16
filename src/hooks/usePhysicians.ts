@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Physician } from '../types';
+import type { Physician, PhysicianStaffType } from '../types';
 import {
   isSupabaseConfigured,
   fetchPhysicians,
@@ -97,7 +97,7 @@ export function usePhysicians() {
       fields: {
         name: string;
         department: string;
-        staffType: 'Active' | 'Visiting';
+        staffType: PhysicianStaffType;
         specialization: string;
         subSpecialization: string;
       },
@@ -134,7 +134,7 @@ export function usePhysicians() {
       fields: {
         name: string;
         department: string;
-        staffType: 'Active' | 'Visiting';
+        staffType: PhysicianStaffType;
         specialization: string;
         subSpecialization: string;
       },
@@ -180,11 +180,20 @@ export function usePhysicians() {
     }
   }, []);
 
-  const physicianNames = physicians.map((p) => p.name);
+  /** OPD / Admitting roster — excludes House Physician */
+  const physicianNames = physicians
+    .filter((p) => p.staffType !== 'House Physician')
+    .map((p) => p.name);
+
+  /** House Physician roster only */
+  const housePhysicianNames = physicians
+    .filter((p) => p.staffType === 'House Physician')
+    .map((p) => p.name);
 
   return {
     physicians,
     physicianNames,
+    housePhysicianNames,
     loginLinked,
     addPhysician,
     editPhysician,

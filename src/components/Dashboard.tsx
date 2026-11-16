@@ -330,7 +330,14 @@ export default function Dashboard({
           {
             icon: Users,
             color: 'bg-blue-50 text-[#1348f3]',
-            label: 'Total OPD',
+            label:
+              sourceFilter === 'ER'
+                ? 'Total ER'
+                : sourceFilter === 'Direct'
+                  ? 'Total Direct'
+                  : sourceFilter === 'All'
+                    ? 'Total Cases'
+                    : 'Total OPD',
             value: kpis.totalOpd,
             prev: prevKpis?.totalOpd,
             suffix: '',

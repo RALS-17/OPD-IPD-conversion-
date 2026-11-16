@@ -67,8 +67,14 @@ export default function Physicians({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return physicians.filter((p) => {
+      const staff = p.staffType || 'Active';
       if (deptFilter !== 'All' && p.department !== deptFilter) return false;
-      if (staffFilter !== 'All' && (p.staffType || 'Active') !== staffFilter) return false;
+      // "All" = clinical roster only (Active + Visiting); House is its own list
+      if (staffFilter === 'All') {
+        if (staff === 'House Physician') return false;
+      } else if (staff !== staffFilter) {
+        return false;
+      }
       if (q) {
         const hay = `${p.name} ${p.department} ${p.specialization || ''} ${p.subSpecialization || ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -191,7 +197,7 @@ export default function Physicians({
         <div>
           <h1 className="text-[16px] font-bold text-slate-900 leading-none">Physicians</h1>
           <p className="text-slate-500 text-[11.5px] mt-0.5">
-            Roster with Active / Visiting, specialization, and optional doctor login.
+            Clinical roster (Active / Visiting) is separate from House Physicians. Optional doctor login for clinical staff.
           </p>
         </div>
         {message && (
@@ -351,9 +357,10 @@ export default function Physicians({
                 value={staffFilter}
                 onChange={(e) => setStaffFilter(e.target.value as 'All' | PhysicianStaffType)}
               >
-                <option value="All">All</option>
+                <option value="All">All clinical</option>
                 <option value="Active">Active</option>
                 <option value="Visiting">Visiting</option>
+                <option value="House Physician">House Physician</option>
               </select>
             </div>
             <div className="flex items-center gap-1.5">
@@ -453,7 +460,9 @@ export default function Physicians({
                             className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
                               staff === 'Active'
                                 ? 'text-emerald-700 bg-emerald-50'
-                                : 'text-violet-700 bg-violet-50'
+                                : staff === 'House Physician'
+                                  ? 'text-amber-800 bg-amber-50'
+                                  : 'text-violet-700 bg-violet-50'
                             }`}
                           >
                             {staff}

@@ -29,7 +29,7 @@ export interface Admission {
   createdAt: string;
 }
 
-export type PhysicianStaffType = 'Active' | 'Visiting';
+export type PhysicianStaffType = 'Active' | 'Visiting' | 'House Physician';
 
 export interface Physician {
   id: string;
@@ -115,4 +115,7 @@ export const DEPARTMENTS = [
   'Emergency Medicine',
 ] as const;
 
-export const PHYSICIAN_STAFF_TYPES: PhysicianStaffType[] = ['Active', 'Visiting'];
+export const PHYSICIAN_STAFF_TYPES: PhysicianStaffType[] = ['Active', 'Visiting', 'House Physician'];
+
+/** Clinical roster only (excludes House Physician) */
+export const CLINICAL_STAFF_TYPES: PhysicianStaffType[] = ['Active', 'Visiting'];

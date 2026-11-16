@@ -175,6 +175,7 @@ export default function App() {
   const {
     physicians,
     physicianNames,
+    housePhysicianNames,
     loginLinked,
     addPhysician,
     editPhysician,
@@ -274,9 +275,18 @@ export default function App() {
       : dateFilteredAdmissions.filter((a) => a.source === sourceFilter);
 
   const prevRangeInfo = previousRange(datePreset, dateFrom, dateTo);
-  const prevAdmissions = prevRangeInfo
+  const prevDateAdmissions = prevRangeInfo
     ? filterByDateRange(roleScopedAdmissions, prevRangeInfo.from, prevRangeInfo.to)
     : [];
+  const prevAdmissions =
+    sourceFilter === 'All'
+      ? prevDateAdmissions
+      : prevDateAdmissions.filter((a) => a.source === sourceFilter);
+
+  // OPD consult overrides only when source filter is OPD.
+  // ER / Direct / All use filtered admission counts so conversion is never blank.
+  const useOpdOverrides = sourceFilter === 'OPD';
+
   const prevSystemPhysicianStats = prevRangeInfo
     ? getPhysicianStats(prevAdmissions)
     : [];
@@ -288,22 +298,26 @@ export default function App() {
     (sum, p) => sum + p.totalOpdConsults,
     0
   );
-  const prevTotalOpd = prevPhysicianStats.reduce((sum, p) => sum + p.totalOpdConsults, 0);
+  const prevOverrideTotal = prevPhysicianStats.reduce(
+    (sum, p) => sum + p.totalOpdConsults,
+    0
+  );
+  const prevVolume = useOpdOverrides ? prevOverrideTotal : prevAdmissions.length;
   const prevKpis = prevBaseKpis
     ? {
         ...prevBaseKpis,
-        totalOpd: prevTotalOpd,
+        totalOpd: prevVolume,
         conversion:
-          prevTotalOpd > 0
-            ? Math.round((prevBaseKpis.actual / prevTotalOpd) * 1000) / 10
+          prevVolume > 0
+            ? Math.round((prevBaseKpis.actual / prevVolume) * 1000) / 10
             : 0,
       }
     : null;
-  // After overrides, totalOpdConsults is the effective total; systemOpdConsults may be set by applyOpdConsultOverrides
+
   const prevMonthlyTrendRaw = prevRangeInfo ? getMonthlyTrend(prevAdmissions) : null;
   const prevConversionScale =
-    prevTotalOpd > 0 && prevSystemTotalOpd > 0
-      ? prevSystemTotalOpd / prevTotalOpd
+    useOpdOverrides && prevOverrideTotal > 0 && prevSystemTotalOpd > 0
+      ? prevSystemTotalOpd / prevOverrideTotal
       : 1;
   const prevMonthlyTrend = prevMonthlyTrendRaw
     ? {
@@ -318,22 +332,29 @@ export default function App() {
   const mix = getMix(filteredAdmissions);
   const systemPhysicianStats = getPhysicianStats(filteredAdmissions);
   const physicianStats = applyOpdConsultOverrides(systemPhysicianStats, opdOverrides);
-  // Total OPD + conversion use per-physician totals (includes Physician Summary edits)
   const baseKpis = getKpis(filteredAdmissions);
-  const systemTotalOpd = systemPhysicianStats.reduce((sum, p) => sum + p.totalOpdConsults, 0);
-  const totalOpd = physicianStats.reduce((sum, p) => sum + p.totalOpdConsults, 0);
+  const systemTotalOpd = systemPhysicianStats.reduce(
+    (sum, p) => sum + p.totalOpdConsults,
+    0
+  );
+  const overrideTotal = physicianStats.reduce(
+    (sum, p) => sum + p.totalOpdConsults,
+    0
+  );
+  const totalVolume = useOpdOverrides ? overrideTotal : filteredAdmissions.length;
   const kpis = {
     ...baseKpis,
-    totalOpd,
+    totalOpd: totalVolume,
     conversion:
-      totalOpd > 0
-        ? Math.round((baseKpis.actual / totalOpd) * 1000) / 10
+      totalVolume > 0
+        ? Math.round((baseKpis.actual / totalVolume) * 1000) / 10
         : 0,
   };
   const topDiagnoses = getTopDiagnoses(filteredAdmissions, 10);
-  // Scale daily conversion so trend matches override-aware overall rate
   const conversionScale =
-    totalOpd > 0 && systemTotalOpd > 0 ? systemTotalOpd / totalOpd : 1;
+    useOpdOverrides && overrideTotal > 0 && systemTotalOpd > 0
+      ? systemTotalOpd / overrideTotal
+      : 1;
   const monthlyTrendRaw = getMonthlyTrend(filteredAdmissions);
   const monthlyTrend = {
     ...monthlyTrendRaw,
@@ -342,7 +363,7 @@ export default function App() {
       value: Math.min(100, Math.round(pt.value * conversionScale * 10) / 10),
     })),
   };
-  const summaryPhysicianStats = systemPhysicianStats;
+    const summaryPhysicianStats = systemPhysicianStats;
 
   const handleExportFiltered = () => {
     exportCsv(filteredAdmissions);
@@ -519,6 +540,7 @@ export default function App() {
                 onUpdate={updateAdmission}
                 onDelete={deleteAdmission}
                 physicians={physicianNames}
+                housePhysicians={housePhysicianNames}
                 departmentByName={departmentByName}
                 physicianMeta={physicianMeta}
                 isDoctor={isDoctor}
