@@ -115,6 +115,14 @@ export const DEPARTMENTS = [
   'Emergency Medicine',
 ] as const;
 
+/** Departments used only for House Physician roster */
+export const HOUSE_PHYSICIAN_DEPARTMENTS = [
+  'ROD',
+  'IM JCON',
+  'PEDIA JCON',
+  'OB JCON',
+] as const;
+
 export const PHYSICIAN_STAFF_TYPES: PhysicianStaffType[] = ['Active', 'Visiting', 'House Physician'];
 
 /** Clinical roster only (excludes House Physician) */

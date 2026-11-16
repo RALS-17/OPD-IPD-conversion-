@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Plus, Pencil, Trash2, Save, X, Stethoscope, KeyRound } from 'lucide-react';
 import type { Physician, PhysicianStaffType, PhysicianWriteFields } from '../types';
-import { DEPARTMENTS, PHYSICIAN_STAFF_TYPES } from '../types';
+import { DEPARTMENTS, HOUSE_PHYSICIAN_DEPARTMENTS, PHYSICIAN_STAFF_TYPES } from '../types';
 import type { DoctorAccountAction } from '../hooks/usePhysicians';
 
 interface PhysiciansProps {
@@ -59,19 +59,28 @@ export default function Physicians({
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const houseDeptSet = useMemo(
+    () => new Set(HOUSE_PHYSICIAN_DEPARTMENTS as readonly string[]),
+    []
+  );
+
   const departmentsInUse = useMemo(() => {
-    const set = new Set(physicians.map((p) => p.department).filter(Boolean));
-    return ['All', ...Array.from(set).sort()];
+    const set = new Set<string>([
+      ...physicians.map((p) => p.department).filter(Boolean),
+      ...HOUSE_PHYSICIAN_DEPARTMENTS,
+    ]);
+    return ['All', ...Array.from(set).sort((a, b) => a.localeCompare(b))];
   }, [physicians]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const filteringHouseDept = deptFilter !== 'All' && houseDeptSet.has(deptFilter);
     return physicians.filter((p) => {
       const staff = p.staffType || 'Active';
       if (deptFilter !== 'All' && p.department !== deptFilter) return false;
-      // "All" = clinical roster only (Active + Visiting); House is its own list
+      // "All clinical" = Active + Visiting only, unless a House dept is selected
       if (staffFilter === 'All') {
-        if (staff === 'House Physician') return false;
+        if (staff === 'House Physician' && !filteringHouseDept) return false;
       } else if (staff !== staffFilter) {
         return false;
       }
@@ -81,7 +90,7 @@ export default function Physicians({
       }
       return true;
     });
-  }, [physicians, deptFilter, staffFilter, search]);
+  }, [physicians, deptFilter, staffFilter, search, houseDeptSet]);
 
   const showMsg = (t: string) => {
     setMessage(t);
@@ -115,8 +124,11 @@ export default function Physicians({
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
+    const isHouseDept = (HOUSE_PHYSICIAN_DEPARTMENTS as readonly string[]).includes(newDept);
+    const staffType: PhysicianStaffType =
+      isHouseDept || newStaffType === 'House Physician' ? 'House Physician' : newStaffType;
     let account: DoctorAccountAction | null = null;
-    if (createLogin && canManageAccounts) {
+    if (createLogin && canManageAccounts && staffType !== 'House Physician') {
       account = buildAccount(true, 'create', loginEmail, loginPassword);
       if (createLogin && !account) return;
     }
@@ -126,7 +138,7 @@ export default function Physicians({
         {
           name: newName.trim(),
           department: newDept,
-          staffType: newStaffType,
+          staffType,
           specialization: newSpec.trim(),
           subSpecialization: newSubSpec.trim(),
         },
@@ -136,10 +148,25 @@ export default function Physicians({
       setNewSpec('');
       setNewSubSpec('');
       setNewStaffType('Active');
+      setNewDept(DEPARTMENTS[0]);
       setLoginEmail('');
       setLoginPassword('');
       setCreateLogin(false);
-      showMsg(account ? 'Physician added and login created' : 'Physician added');
+      // Show the roster where the new row lives
+      if (staffType === 'House Physician') {
+        setStaffFilter('House Physician');
+        setDeptFilter(newDept);
+      } else {
+        setStaffFilter('All');
+        setDeptFilter('All');
+      }
+      showMsg(
+        account
+          ? 'Physician added and login created'
+          : staffType === 'House Physician'
+            ? 'House physician added — list filtered to House Physician'
+            : 'Physician added'
+      );
     } finally {
       setSaving(false);
     }
@@ -236,21 +263,17 @@ export default function Physicians({
             />
           </div>
           <div>
-            <label className={label}>Department</label>
-            <select className={field} value={newDept} onChange={(e) => setNewDept(e.target.value)}>
-              {DEPARTMENTS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
             <label className={label}>Staff type</label>
             <select
               className={field}
               value={newStaffType}
-              onChange={(e) => setNewStaffType(e.target.value as PhysicianStaffType)}
+              onChange={(e) => {
+                const t = e.target.value as PhysicianStaffType;
+                setNewStaffType(t);
+                if (t === 'House Physician') setNewDept(HOUSE_PHYSICIAN_DEPARTMENTS[0]);
+                else if ((HOUSE_PHYSICIAN_DEPARTMENTS as readonly string[]).includes(newDept))
+                  setNewDept(DEPARTMENTS[0]);
+              }}
             >
               {PHYSICIAN_STAFF_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -258,6 +281,55 @@ export default function Physicians({
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className={label}>
+              Department
+              {newStaffType === 'House Physician' ? (
+                <span className="text-amber-700 font-normal"> — House units</span>
+              ) : null}
+            </label>
+            <select
+              className={field}
+              value={newDept}
+              onChange={(e) => {
+                const d = e.target.value;
+                setNewDept(d);
+                if ((HOUSE_PHYSICIAN_DEPARTMENTS as readonly string[]).includes(d)) {
+                  setNewStaffType('House Physician');
+                }
+              }}
+            >
+              {newStaffType === 'House Physician' ? (
+                <>
+                  <option value="ROD">ROD</option>
+                  <option value="IM JCON">IM JCON</option>
+                  <option value="PEDIA JCON">PEDIA JCON</option>
+                  <option value="OB JCON">OB JCON</option>
+                </>
+              ) : (
+                <>
+                  <optgroup label="Clinical departments">
+                    {DEPARTMENTS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="House Physician units">
+                    <option value="ROD">ROD</option>
+                    <option value="IM JCON">IM JCON</option>
+                    <option value="PEDIA JCON">PEDIA JCON</option>
+                    <option value="OB JCON">OB JCON</option>
+                  </optgroup>
+                </>
+              )}
+            </select>
+            {newStaffType === 'House Physician' && (
+              <p className="text-[10px] text-amber-700/80 mt-0.5">
+                Choose ROD, IM JCON, PEDIA JCON, or OB JCON
+              </p>
+            )}
           </div>
           <div>
             <label className={label}>Specialization</label>
@@ -427,12 +499,20 @@ export default function Physicians({
                             value={editDept}
                             onChange={(e) => setEditDept(e.target.value)}
                           >
-                            {DEPARTMENTS.map((d) => (
+                            {(editStaffType === 'House Physician'
+                              ? HOUSE_PHYSICIAN_DEPARTMENTS
+                              : DEPARTMENTS
+                            ).map((d) => (
                               <option key={d} value={d}>
                                 {d}
                               </option>
                             ))}
-                            {editDept && !DEPARTMENTS.includes(editDept as (typeof DEPARTMENTS)[number]) && (
+                            {editDept &&
+                              !(
+                                editStaffType === 'House Physician'
+                                  ? (HOUSE_PHYSICIAN_DEPARTMENTS as readonly string[])
+                                  : (DEPARTMENTS as readonly string[])
+                              ).includes(editDept) && (
                               <option value={editDept}>{editDept}</option>
                             )}
                           </select>
@@ -445,9 +525,17 @@ export default function Physicians({
                           <select
                             className={field}
                             value={editStaffType}
-                            onChange={(e) =>
-                              setEditStaffType(e.target.value as PhysicianStaffType)
-                            }
+                            onChange={(e) => {
+                              const t = e.target.value as PhysicianStaffType;
+                              setEditStaffType(t);
+                              if (t === 'House Physician') {
+                                setEditDept(HOUSE_PHYSICIAN_DEPARTMENTS[0]);
+                              } else if (
+                                (HOUSE_PHYSICIAN_DEPARTMENTS as readonly string[]).includes(editDept)
+                              ) {
+                                setEditDept(DEPARTMENTS[0]);
+                              }
+                            }}
                           >
                             {PHYSICIAN_STAFF_TYPES.map((t) => (
                               <option key={t} value={t}>

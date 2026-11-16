@@ -117,8 +117,13 @@ export function usePhysicians() {
         console.error(e);
         alert(
           e instanceof Error
-            ? e.message.includes('staff_type') || e.message.includes('specialization')
-              ? 'Run supabase/physician_directory_fields.sql in Supabase, then try again.\n\n' +
+            ? e.message.includes('staff_type') ||
+                e.message.includes('specialization') ||
+                e.message.includes('physicians_staff_type_check')
+              ? 'Supabase rejected staff_type. Run this in SQL Editor:\n\n' +
+                "alter table public.physicians drop constraint if exists physicians_staff_type_check;\n" +
+                "alter table public.physicians add constraint physicians_staff_type_check " +
+                "check (staff_type in ('Active', 'Visiting', 'House Physician'));\n\n" +
                 e.message
               : e.message
             : 'Failed to add physician.'
@@ -153,8 +158,13 @@ export function usePhysicians() {
         console.error(e);
         alert(
           e instanceof Error
-            ? e.message.includes('staff_type') || e.message.includes('specialization')
-              ? 'Run supabase/physician_directory_fields.sql in Supabase, then try again.\n\n' +
+            ? e.message.includes('staff_type') ||
+                e.message.includes('specialization') ||
+                e.message.includes('physicians_staff_type_check')
+              ? 'Supabase rejected staff_type. Run this in SQL Editor:\n\n' +
+                "alter table public.physicians drop constraint if exists physicians_staff_type_check;\n" +
+                "alter table public.physicians add constraint physicians_staff_type_check " +
+                "check (staff_type in ('Active', 'Visiting', 'House Physician'));\n\n" +
                 e.message
               : e.message
             : 'Failed to update physician.'
