@@ -58,6 +58,7 @@ export default function Physicians({
 
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   const houseDeptSet = useMemo(
     () => new Set(HOUSE_PHYSICIAN_DEPARTMENTS as readonly string[]),
@@ -167,6 +168,7 @@ export default function Physicians({
             ? 'House physician added — list filtered to House Physician'
             : 'Physician added'
       );
+      setAddOpen(false);
     } finally {
       setSaving(false);
     }
@@ -220,18 +222,51 @@ export default function Physicians({
 
   return (
     <div className="flex flex-col gap-2.5 h-full min-h-0">
-      <div className="shrink-0 flex items-start justify-between gap-2">
-        <div>
-          <h1 className="text-[16px] font-bold text-slate-900 leading-none">Physicians</h1>
-          <p className="text-slate-500 text-[11.5px] mt-0.5">
-            Clinical roster (Active / Visiting) is separate from House Physicians. Optional doctor login for clinical staff.
-          </p>
+      <div className="shrink-0 flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+        <h1 className="text-[16px] font-bold text-slate-900 leading-none">Physicians</h1>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {message && (
+            <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
+              {message}
+            </span>
+          )}
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search..."
+            className="h-8 w-[140px] px-2.5 text-[11px] border border-slate-200 rounded-md bg-white focus:outline-none"
+          />
+          <select
+            className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
+            value={staffFilter}
+            onChange={(e) => setStaffFilter(e.target.value as 'All' | PhysicianStaffType)}
+          >
+            <option value="All">All clinical</option>
+            <option value="Active">Active</option>
+            <option value="Visiting">Visiting</option>
+            <option value="House Physician">House Physician</option>
+          </select>
+          <select
+            className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30 max-w-[140px]"
+            value={deptFilter}
+            onChange={(e) => setDeptFilter(e.target.value)}
+          >
+            {departmentsInUse.map((d) => (
+              <option key={d} value={d}>
+                {d === 'All' ? 'All departments' : d}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-[11px] font-semibold text-white bg-[#1348f3] rounded-md hover:bg-blue-700"
+          >
+            <Plus size={14} />
+            Add physician
+          </button>
         </div>
-        {message && (
-          <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
-            {message}
-          </span>
-        )}
       </div>
 
       {!usingSupabase && (
@@ -245,13 +280,32 @@ export default function Physicians({
         </div>
       )}
 
-      {/* Add */}
-      <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 shrink-0">
-        <div className="flex items-center gap-1.5 mb-2">
-          <Stethoscope size={14} className="text-[#1348f3]" />
-          <h2 className="text-[12.5px] font-semibold text-slate-800">Add physician</h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      {/* Add physician modal */}
+      {addOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px]"
+            aria-label="Close"
+            onClick={() => !saving && setAddOpen(false)}
+          />
+          <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-xl border border-slate-200 shadow-2xl">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-100 sticky top-0 bg-white z-10">
+              <div className="flex items-center gap-1.5">
+                <Stethoscope size={14} className="text-[#1348f3]" />
+                <h2 className="text-[13px] font-semibold text-slate-800">Add physician</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => !saving && setAddOpen(false)}
+                className="p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           <div>
             <label className={label}>Name</label>
             <input
@@ -406,55 +460,22 @@ export default function Physicians({
             <Plus size={12} /> {saving ? 'Saving…' : 'Add physician'}
           </button>
         </div>
-      </div>
-
-      {/* List */}
-      <div className="bg-white rounded-md border border-slate-200 shadow-sm p-3 flex-1 min-h-0 flex flex-col">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2 shrink-0">
-          <p className="text-[11px] text-slate-500">
-            {filtered.length} physician{filtered.length !== 1 ? 's' : ''}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search doctor…"
-              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white min-w-[160px] focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
-            />
-            <div className="flex items-center gap-1.5">
-              <label className="text-[11px] text-slate-500">Staff</label>
-              <select
-                className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white"
-                value={staffFilter}
-                onChange={(e) => setStaffFilter(e.target.value as 'All' | PhysicianStaffType)}
-              >
-                <option value="All">All clinical</option>
-                <option value="Active">Active</option>
-                <option value="Visiting">Visiting</option>
-                <option value="House Physician">House Physician</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <label className="text-[11px] text-slate-500">Department</label>
-              <select
-                className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white"
-                value={deptFilter}
-                onChange={(e) => setDeptFilter(e.target.value)}
-              >
-                {departmentsInUse.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
         </div>
+      )}
 
-        <div className="overflow-auto flex-1 min-h-0 border border-slate-100 rounded-md">
+      {/* List */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex items-center justify-between gap-2 px-1 py-2 shrink-0">
+          <p className="text-[11px] text-slate-400">
+            {filtered.length} physician{filtered.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+
+        <div className="overflow-auto flex-1 min-h-0">
           <table className="w-full text-[11.5px]">
-            <thead className="sticky top-0 bg-slate-50">
+            <thead className="sticky top-0 bg-white">
               <tr className="text-left text-slate-500 border-b border-slate-100">
                 <th className="px-3 py-1.5 font-semibold text-[10px]">#</th>
                 <th className="px-3 py-1.5 font-semibold text-[10px]">Physician</th>
@@ -478,7 +499,12 @@ export default function Physicians({
                   const isEditing = editingId === p.id;
                   const staff = p.staffType || 'Active';
                   return (
-                    <tr key={p.id} className="border-b border-slate-50 align-top">
+                    <tr
+                      key={p.id}
+                      className={`border-b border-slate-100 align-top ${
+                        idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'
+                      } hover:bg-blue-50/40`}
+                    >
                       <td className="px-3 py-1.5 text-slate-400">{idx + 1}</td>
                       <td className="px-3 py-1.5">
                         {isEditing ? (

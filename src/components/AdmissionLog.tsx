@@ -330,27 +330,75 @@ export default function AdmissionLog({
 
   return (
     <div className="flex flex-col gap-2 h-full min-h-0">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between shrink-0 gap-2">
+      {/* Header: title left, filters + action right */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between shrink-0 gap-2">
         <div>
           <h1 className="text-[16px] font-bold text-slate-900 leading-none">Admission Log</h1>
-          <p className="text-slate-500 text-[11.5px] mt-0.5">
-            {isDoctor && physicianName
-              ? `Your patients · ${physicianName}`
-              : 'View and manage hospital admissions.'}
-          </p>
+          {isDoctor && physicianName ? (
+            <p className="text-slate-500 text-[11.5px] mt-0.5">Your patients · {physicianName}</p>
+          ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setEditing(null);
-            setIsFormOpen(true);
-          }}
-          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 bg-[#1348f3] text-white text-[12px] font-semibold rounded-md hover:bg-blue-700 transition-colors shadow-sm w-full sm:w-auto"
-        >
-          <Plus size={14} />
-          Add New Admission
-        </button>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <div className="relative">
+            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="h-8 w-[140px] pl-7 pr-2 text-[11px] border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
+            />
+          </div>
+          <select
+            value={filterSource}
+            onChange={(e) => setFilterSource(e.target.value)}
+            className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
+          >
+            <option value="All">All sources</option>
+            <option value="OPD">OPD</option>
+            <option value="ER">ER</option>
+            <option value="Direct">Direct</option>
+          </select>
+          <select
+            value={filterPhysician}
+            onChange={(e) => setFilterPhysician(e.target.value)}
+            className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30 max-w-[150px]"
+          >
+            <option value="All">All doctors</option>
+            {physicianOptions.filter((p) => p !== 'All').map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+          <select
+            value={filterAdvised}
+            onChange={(e) => setFilterAdvised(e.target.value)}
+            className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
+          >
+            <option value="All">Advised: All</option>
+            <option value="Yes">Advised: Yes</option>
+            <option value="No">Advised: No</option>
+          </select>
+          <select
+            value={filterAdmitted}
+            onChange={(e) => setFilterAdmitted(e.target.value)}
+            className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
+          >
+            <option value="All">Admitted: All</option>
+            <option value="Yes">Admitted: Yes</option>
+            <option value="No">Admitted: No</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(null);
+              setIsFormOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 h-8 px-3 bg-[#1348f3] text-white text-[11px] font-semibold rounded-md hover:bg-blue-700"
+          >
+            <Plus size={14} />
+            Add New Admission
+          </button>
+        </div>
       </div>
 
       {/* Doctor home strip */}
@@ -370,27 +418,6 @@ export default function AdmissionLog({
               <p className="text-[16px] font-bold text-slate-900 leading-tight">{s.value}</p>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Data quality banner */}
-      {issueCount > 0 && (
-        <div className="shrink-0 flex flex-col sm:flex-row sm:items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-900">
-          <div className="flex items-start gap-2 min-w-0 flex-1">
-            <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
-            <p>
-              <span className="font-semibold">{issueCount}</span> record
-              {issueCount === 1 ? '' : 's'} need attention (missing physician/date, advised but not
-              admitted after {PENDING_DAYS}+ days, or possible duplicates).
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIssueFilter((f) => (f === 'issues' ? 'all' : 'issues'))}
-            className="shrink-0 px-2.5 py-1 rounded-md border border-amber-300 bg-white text-amber-800 font-semibold hover:bg-amber-100"
-          >
-            {issueFilter === 'issues' ? 'Show all' : 'Show issues only'}
-          </button>
         </div>
       )}
 
@@ -475,76 +502,8 @@ export default function AdmissionLog({
         )}
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2 shrink-0">
-        <div className="flex flex-col gap-2">
-          <div className="relative">
-            <Search
-              size={13}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              type="text"
-              placeholder="Search patients, diagnosis, complaint, physician..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              maxLength={80}
-              className="w-full pl-8 pr-3 py-2 sm:py-1.5 text-[12px] border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30 focus:border-[#1348f3] placeholder:text-slate-400"
-            />
-          </div>
-          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-            <select
-              value={filterSource}
-              onChange={(e) => setFilterSource(e.target.value)}
-              className="text-[12px] border border-slate-200 rounded-md px-2 py-2 sm:py-1.5 text-slate-600 bg-white focus:outline-none min-w-0 sm:min-w-[110px]"
-            >
-              <option value="All">All Sources</option>
-              <option value="OPD">OPD</option>
-              <option value="ER">ER</option>
-              <option value="Direct">Direct</option>
-            </select>
-            <select
-              value={filterAdvised}
-              onChange={(e) => setFilterAdvised(e.target.value)}
-              className="text-[12px] border border-slate-200 rounded-md px-2 py-2 sm:py-1.5 text-slate-600 bg-white focus:outline-none min-w-0 sm:min-w-[110px]"
-            >
-              <option value="All">Advised: All</option>
-              <option value="Yes">Advised: Yes</option>
-              <option value="No">Advised: No</option>
-            </select>
-            <select
-              value={filterAdmitted}
-              onChange={(e) => setFilterAdmitted(e.target.value)}
-              className="text-[12px] border border-slate-200 rounded-md px-2 py-2 sm:py-1.5 text-slate-600 bg-white focus:outline-none min-w-0 sm:min-w-[120px]"
-            >
-              <option value="All">Admitted: All</option>
-              <option value="Yes">Admitted: Yes</option>
-              <option value="No">Admitted: No</option>
-            </select>
-            <SearchablePhysicianSelect
-              value={filterPhysician}
-              onChange={setFilterPhysician}
-              options={physicianOptions}
-              allValue="All"
-              allLabel="All Physicians"
-              className="col-span-2 sm:col-span-1"
-            />
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center justify-center gap-1 px-2 py-2 sm:py-1.5 text-[11px] font-medium text-slate-500 border border-slate-200 rounded-md hover:bg-slate-50 col-span-2 sm:col-span-1"
-              >
-                <Filter size={12} />
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* List */}
-      <div className="bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col">
         {filtered.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center px-4 py-10 text-center">
             <p className="text-[13px] font-semibold text-slate-700">{emptyHint.title}</p>
@@ -566,16 +525,18 @@ export default function AdmissionLog({
         ) : (
           <>
             {/* Mobile cards */}
-            <div className="md:hidden overflow-auto flex-1 p-2 space-y-2">
-              {filtered.map((a) => {
+            <div className="md:hidden overflow-auto flex-1">
+              {filtered.map((a, idx) => {
                 const issues = issueMap.get(a.id);
                 return (
                   <div
                     key={a.id}
-                    className={`rounded-md border p-3 ${
+                    className={`px-3 py-2.5 border-b border-slate-100 ${
                       issues?.kinds.length
-                        ? 'border-amber-200 bg-amber-50/40'
-                        : 'border-slate-200 bg-white'
+                        ? 'bg-amber-50/60'
+                        : idx % 2 === 0
+                          ? 'bg-white'
+                          : 'bg-slate-50'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -620,8 +581,8 @@ export default function AdmissionLog({
             {/* Desktop table */}
             <div className="hidden md:block overflow-auto flex-1">
               <table className="w-full text-[11.5px]">
-                <thead className="sticky top-0 bg-slate-50 z-10">
-                  <tr className="text-left text-slate-500 border-b border-slate-100">
+                <thead className="sticky top-0 bg-white z-10">
+                  <tr className="text-left text-slate-400 border-b border-slate-200 uppercase tracking-wide text-[10px]">
                     <th className="px-3 py-2 font-semibold text-[10px] min-w-[140px]">Patient Name</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">Old/New</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">HMO/CASH</th>
@@ -640,15 +601,19 @@ export default function AdmissionLog({
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((a) => {
+                  {filtered.map((a, idx) => {
                     const issues = issueMap.get(a.id);
                     const hasIssue = !!issues?.kinds.length;
                     return (
                       <tr
                         key={a.id}
-                        className={`border-b border-slate-50 hover:bg-slate-50/80 transition-colors ${
-                          hasIssue ? 'bg-amber-50/50' : ''
-                        }`}
+                        className={`border-b border-slate-100 ${
+                          hasIssue
+                            ? 'bg-amber-50/60'
+                            : idx % 2 === 0
+                              ? 'bg-white'
+                              : 'bg-slate-50'
+                        } hover:bg-blue-50/40 transition-colors`}
                         title={issues?.labels.join(' · ') || undefined}
                       >
                         <td className="px-3 py-1.5 max-w-[200px]">
@@ -761,7 +726,7 @@ export default function AdmissionLog({
             </div>
           </>
         )}
-        <div className="px-3 py-1.5 border-t border-slate-100 text-[11px] text-slate-500 shrink-0 flex items-center justify-between gap-2">
+        <div className="px-1 py-1.5 border-t border-slate-100 text-[11px] text-slate-500 shrink-0 flex items-center justify-between gap-2">
           <span>
             Showing {filtered.length} of {admissions.length} admissions
             {issueFilter === 'issues' ? ' · issues only' : ''}

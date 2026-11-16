@@ -23,6 +23,11 @@ interface PhysicianSummaryProps {
   onDatePreset?: (preset: string) => void;
   onDateFrom?: (v: string) => void;
   onDateTo?: (v: string) => void;
+  departmentFilter?: string;
+  onDepartmentFilter?: (v: string) => void;
+  doctorFilter?: string;
+  onDoctorFilter?: (v: string) => void;
+  physicianNames?: string[];
 }
 
 export default function PhysicianSummary({
@@ -30,6 +35,7 @@ export default function PhysicianSummary({
   goodThreshold,
   averageThreshold,
   onPhysicianClick,
+  departmentByName = {},
   onOpdOverridesChange,
   opdOverrides: controlledOverrides,
   datePreset = 'month',
@@ -38,6 +44,11 @@ export default function PhysicianSummary({
   onDatePreset,
   onDateFrom,
   onDateTo,
+  departmentFilter = 'All',
+  onDepartmentFilter,
+  doctorFilter = 'All',
+  onDoctorFilter,
+  physicianNames = [],
 }: PhysicianSummaryProps) {
   const [localOverrides, setLocalOverrides] = useState<OpdConsultOverrides>(() =>
     loadOpdConsultOverrides()
@@ -49,11 +60,19 @@ export default function PhysicianSummary({
   const [doctorSearch, setDoctorSearch] = useState('');
 
   const displayStats = useMemo(() => {
-    const base = applyOpdConsultOverrides(stats, overrides);
+    let base = applyOpdConsultOverrides(stats, overrides);
+    if (doctorFilter !== 'All') {
+      base = base.filter((s) => s.physician === doctorFilter);
+    }
+    if (departmentFilter !== 'All' && departmentByName) {
+      base = base.filter(
+        (s) => (departmentByName[s.physician] || '').trim() === departmentFilter
+      );
+    }
     const q = doctorSearch.trim().toLowerCase();
-    if (!q) return base;
-    return base.filter((s) => s.physician.toLowerCase().includes(q));
-  }, [stats, overrides, doctorSearch]);
+    if (q) base = base.filter((s) => s.physician.toLowerCase().includes(q));
+    return base;
+  }, [stats, overrides, doctorSearch, doctorFilter, departmentFilter, departmentByName]);
 
   const avgConversion =
     displayStats.length > 0
@@ -94,23 +113,17 @@ export default function PhysicianSummary({
 
   return (
     <div className="flex flex-col gap-2.5 h-full min-h-0">
-      <div className="shrink-0">
+      <div className="shrink-0 flex flex-col lg:flex-row lg:items-center justify-between gap-2">
         <h1 className="text-[16px] font-bold text-slate-900 leading-none">
           Monthly Physician Performance
         </h1>
-        <p className="text-slate-500 text-[11.5px] mt-0.5">
-          Track OPD conversion performance and admission outcomes.
-        </p>
-      </div>
-
-      <div className="shrink-0 flex flex-wrap items-center gap-1.5 justify-between">
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           {(['today', 'week', 'month', 'all', 'custom'] as const).map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => onDatePreset?.(p)}
-              className={`px-2 py-1 text-[10px] font-semibold rounded-md border ${
+              className={`h-8 px-2.5 text-[11px] font-semibold rounded-md border ${
                 datePreset === p
                   ? 'bg-[#1348f3] text-white border-[#1348f3]'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
@@ -133,25 +146,58 @@ export default function PhysicianSummary({
                 type="date"
                 value={dateFrom}
                 onChange={(e) => onDateFrom?.(e.target.value)}
-                className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1"
+                className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
               />
-              <span className="text-[10px] text-slate-400">to</span>
+              <span className="text-[11px] text-slate-400">to</span>
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => onDateTo?.(e.target.value)}
-                className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1"
+                className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
               />
             </>
           )}
+          <select
+            value={departmentFilter}
+            onChange={(e) => onDepartmentFilter?.(e.target.value)}
+            className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30 max-w-[140px]"
+          >
+            <option value="All">All departments</option>
+            {Array.from(
+              new Set(
+                Object.values(departmentByName || {}).filter(Boolean) as string[]
+              )
+            )
+              .sort()
+              .map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+          </select>
+          <select
+            value={doctorFilter}
+            onChange={(e) => onDoctorFilter?.(e.target.value)}
+            className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30 max-w-[160px]"
+          >
+            <option value="All">All doctors</option>
+            {(physicianNames.length
+              ? physicianNames
+              : displayStats.map((s) => s.physician)
+            ).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={doctorSearch}
+            onChange={(e) => setDoctorSearch(e.target.value)}
+            placeholder="Search..."
+            className="h-8 w-[140px] px-2.5 text-[11px] border border-slate-200 rounded-md bg-white focus:outline-none"
+          />
         </div>
-        <input
-          type="text"
-          value={doctorSearch}
-          onChange={(e) => setDoctorSearch(e.target.value)}
-          placeholder="Search doctor…"
-          className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white min-w-[180px] focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
-        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 shrink-0">
@@ -201,10 +247,10 @@ export default function PhysicianSummary({
         </div>
       </div>
 
-      <div className="bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col">
         <div className="overflow-auto flex-1">
           <table className="w-full text-[11.5px]">
-            <thead className="sticky top-0 bg-slate-50 z-10">
+            <thead className="sticky top-0 bg-white z-10">
               <tr className="text-left text-slate-500 border-b border-slate-100">
                 <th className="px-3 py-2 font-semibold text-[10px]">Physician Name</th>
                 <th className="px-2 py-2 font-semibold text-[10px] text-right">
@@ -232,12 +278,14 @@ export default function PhysicianSummary({
                   </td>
                 </tr>
               ) : (
-                displayStats.map((s) => {
+                displayStats.map((s, idx) => {
                   const isEditing = editing === s.physician;
                   return (
                     <tr
                       key={s.physician}
-                      className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
+                      className={`border-b border-slate-100 ${
+                        idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'
+                      } hover:bg-blue-50/40 transition-colors`}
                     >
                       <td className="px-3 py-1.5">
                         <button

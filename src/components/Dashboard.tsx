@@ -63,6 +63,11 @@ interface DashboardProps {
   onDateTo: (v: string) => void;
   sourceFilter?: 'All' | 'OPD' | 'ER' | 'Direct';
   onSourceFilter?: (v: 'All' | 'OPD' | 'ER' | 'Direct') => void;
+  departmentFilter?: string;
+  onDepartmentFilter?: (v: string) => void;
+  doctorFilter?: string;
+  onDoctorFilter?: (v: string) => void;
+  physicianNames?: string[];
   onExport: () => void;
   onPrintSnapshot?: () => void;
   filteredCount: number;
@@ -139,6 +144,11 @@ export default function Dashboard({
   onDateTo,
   sourceFilter = 'All',
   onSourceFilter,
+  departmentFilter = 'All',
+  onDepartmentFilter,
+  doctorFilter = 'All',
+  onDoctorFilter,
+  physicianNames = [],
   onExport,
   onPrintSnapshot,
   filteredCount,
@@ -302,6 +312,35 @@ export default function Dashboard({
             <option value="OPD">OPD</option>
             <option value="ER">ER</option>
             <option value="Direct">Direct</option>
+          </select>
+          <select
+            value={departmentFilter}
+            onChange={(e) => onDepartmentFilter?.(e.target.value)}
+            className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1 text-slate-600 bg-white focus:outline-none max-w-[140px]"
+            title="Filter by department"
+          >
+            <option value="All">All departments</option>
+            {departmentOptions.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+          <select
+            value={doctorFilter}
+            onChange={(e) => onDoctorFilter?.(e.target.value)}
+            className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1 text-slate-600 bg-white focus:outline-none max-w-[160px]"
+            title="Filter by doctor"
+          >
+            <option value="All">All doctors</option>
+            {(physicianNames.length
+              ? physicianNames
+              : physicianStats.map((p) => p.physician)
+            ).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
           </select>
           <span className="text-[10px] text-slate-400 ml-1">{filteredCount} records</span>
         </div>

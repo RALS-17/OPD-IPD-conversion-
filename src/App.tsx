@@ -93,6 +93,8 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [datePreset, setDatePreset] = useState<DatePreset>('month');
   const [sourceFilter, setSourceFilter] = useState<'All' | 'OPD' | 'ER' | 'Direct'>('All');
+  const [dashDeptFilter, setDashDeptFilter] = useState('All');
+  const [dashDoctorFilter, setDashDoctorFilter] = useState('All');
   const [dateFrom, setDateFrom] = useState(() => rangeForPreset('month')?.from || '');
   const [dateTo, setDateTo] = useState(() => rangeForPreset('month')?.to || '');
   const [drillPhysician, setDrillPhysician] = useState<string | null>(null);
@@ -269,10 +271,21 @@ export default function App() {
     activeRange?.from,
     activeRange?.to
   );
-  const filteredAdmissions =
+  const sourceFilteredAdmissions =
     sourceFilter === 'All'
       ? dateFilteredAdmissions
       : dateFilteredAdmissions.filter((a) => a.source === sourceFilter);
+
+  const filteredAdmissions = sourceFilteredAdmissions.filter((a) => {
+    if (dashDeptFilter !== 'All') {
+      const dept = (departmentByName[a.opdAttendingPhysician] || '').trim();
+      if (dept !== dashDeptFilter) return false;
+    }
+    if (dashDoctorFilter !== 'All') {
+      if ((a.opdAttendingPhysician || '').trim() !== dashDoctorFilter) return false;
+    }
+    return true;
+  });
 
   const prevRangeInfo = previousRange(datePreset, dateFrom, dateTo);
   const prevDateAdmissions = prevRangeInfo
@@ -526,6 +539,11 @@ export default function App() {
                 onDateTo={setDateTo}
                 sourceFilter={sourceFilter}
                 onSourceFilter={setSourceFilter}
+                departmentFilter={dashDeptFilter}
+                onDepartmentFilter={setDashDeptFilter}
+                doctorFilter={dashDoctorFilter}
+                onDoctorFilter={setDashDoctorFilter}
+                physicianNames={physicianNames}
                 onExport={handleExportFiltered}
                 onPrintSnapshot={handlePrintSnapshot}
                 filteredCount={filteredAdmissions.length}
@@ -562,6 +580,11 @@ export default function App() {
                 onDatePreset={handleDatePreset}
                 onDateFrom={setDateFrom}
                 onDateTo={setDateTo}
+                departmentFilter={dashDeptFilter}
+                onDepartmentFilter={setDashDeptFilter}
+                doctorFilter={dashDoctorFilter}
+                onDoctorFilter={setDashDoctorFilter}
+                physicianNames={physicianNames}
               />
             )}
             {currentPage === 'physicians' && !isDoctor && (
