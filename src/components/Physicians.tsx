@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, Save, X, Stethoscope, KeyRound } from 'lucide-rea
 import type { Physician, PhysicianStaffType, PhysicianWriteFields } from '../types';
 import { DEPARTMENTS, HOUSE_PHYSICIAN_DEPARTMENTS, PHYSICIAN_STAFF_TYPES } from '../types';
 import type { DoctorAccountAction } from '../hooks/usePhysicians';
+import { toast } from '../lib/toast';
 
 interface PhysiciansProps {
   physicians: Physician[];
@@ -10,13 +11,13 @@ interface PhysiciansProps {
   onAdd: (
     fields: PhysicianWriteFields,
     account?: DoctorAccountAction | null
-  ) => void | Promise<void>;
+  ) => void | boolean | Promise<void | boolean>;
   onEdit: (
     id: string,
     fields: PhysicianWriteFields,
     account?: DoctorAccountAction | null
-  ) => void | Promise<void>;
-  onDelete: (id: string) => void | Promise<void>;
+  ) => void | boolean | Promise<void | boolean>;
+  onDelete: (id: string) => void | boolean | Promise<void | boolean>;
   usingSupabase: boolean;
   error: string | null;
   canManageAccounts?: boolean;
@@ -113,12 +114,12 @@ export default function Physicians({
   ): DoctorAccountAction | null => {
     if (!on || !canManageAccounts) return null;
     if (!email.trim()) {
-      alert('Login email is required.');
+      toast.error('Login email is required.');
       return null;
     }
     if (mode === 'create') {
       if (password.length < 6) {
-        alert('Password must be at least 6 characters.');
+        toast.error('Password must be at least 6 characters.');
         return null;
       }
       return { mode: 'create', email: email.trim(), password };
@@ -138,7 +139,7 @@ export default function Physicians({
     }
     setSaving(true);
     try {
-      await onAdd(
+      const ok = await onAdd(
         {
           name: newName.trim(),
           department: newDept,
@@ -148,6 +149,8 @@ export default function Physicians({
         },
         account
       );
+      // Failed → keep the form as typed so nothing has to be re-entered (a toast explains why)
+      if (ok === false) return;
       setNewName('');
       setNewSpec('');
       setNewSubSpec('');
@@ -199,7 +202,7 @@ export default function Physicians({
     }
     setSaving(true);
     try {
-      await onEdit(
+      const ok = await onEdit(
         editingId,
         {
           name: editName.trim(),
@@ -210,6 +213,7 @@ export default function Physicians({
         },
         account
       );
+      if (ok === false) return;
       setEditingId(null);
       showMsg(
         account

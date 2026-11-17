@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Target, Database, Trash2, Download, RotateCcw, Sun, Moon, ScrollText } from 'lucide-react';
+import { Building2, Target, Database, Trash2, Download, Sun, Moon, ScrollText } from 'lucide-react';
 import { fetchAuditLogs, type AuditEntry } from '../lib/auditLog';
 import type { AppSettings } from '../types';
 
@@ -8,8 +8,7 @@ interface SettingsProps {
   onUpdate: (partial: Partial<AppSettings>) => void;
   onResetSettings: () => void;
   onExportCsv: () => void;
-  onClearData: () => void;
-  onReloadSample: () => void;
+  onClearData: () => void | boolean | Promise<void | boolean>;
   admissionCount: number;
   isAdmin: boolean;
 }
@@ -20,7 +19,6 @@ export default function Settings({
   onResetSettings,
   onExportCsv,
   onClearData,
-  onReloadSample,
   admissionCount,
   isAdmin,
 }: SettingsProps) {
@@ -248,26 +246,10 @@ export default function Settings({
               <>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        'Reload sample Pinoy demo data? Current log will be replaced (local mode only).'
-                      )
-                    ) {
-                      onReloadSample();
-                      showMsg('Sample data loaded');
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium bg-white border border-slate-200 rounded-md hover:bg-slate-50"
-                >
-                  <RotateCcw size={12} /> Reload sample
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     if (confirm('Clear ALL admission records? This cannot be undone.')) {
-                      onClearData();
-                      showMsg('All data cleared');
+                      const ok = await onClearData();
+                      if (ok !== false) showMsg('All data cleared');
                     }
                   }}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-red-600 bg-red-50 border border-red-100 rounded-md hover:bg-red-100"
@@ -279,7 +261,7 @@ export default function Settings({
           </div>
           {!isAdmin && (
             <p className="text-[10px] text-slate-400 mt-2">
-              Only admins can clear or reload admission data.
+              Only admins can clear admission data.
             </p>
           )}
           <p className="text-[10px] text-slate-400 mt-2">

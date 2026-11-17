@@ -27,12 +27,16 @@ export function fromPhysicianRow(row: Record<string, unknown>): Physician {
   };
 }
 
+/**
+ * Loads EVERY physician row, including inactive ones (active = false).
+ * Inactive doctors must stay resolvable so old admissions / entries still show their
+ * department; pickers and the roster page filter on `active` themselves (see usePhysicians).
+ */
 export async function fetchPhysicians(): Promise<Physician[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from('physicians')
     .select('*')
-    .eq('active', true)
     .order('name', { ascending: true });
   if (error) throw error;
   return (data || []).map((r) => fromPhysicianRow(r as Record<string, unknown>));

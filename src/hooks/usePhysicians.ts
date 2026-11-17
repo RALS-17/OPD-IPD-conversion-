@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Physician, PhysicianStaffType } from '../types';
 import {
   isSupabaseConfigured,
@@ -11,13 +11,33 @@ import {
   linkExistingUserToPhysician,
 } from '../lib/physiciansApi';
 import { supabase } from '../lib/supabase';
+import { toast, errorMessage } from '../lib/toast';
 
 export type DoctorAccountAction =
   | { mode: 'create'; email: string; password: string }
   | { mode: 'link'; email: string };
 
+const STAFF_TYPE_FIX_SQL =
+  'Supabase rejected staff_type. Run this in SQL Editor:\n\n' +
+  'alter table public.physicians drop constraint if exists physicians_staff_type_check;\n' +
+  'alter table public.physicians add constraint physicians_staff_type_check ' +
+  "check (staff_type in ('Active', 'Visiting', 'House Physician'));";
+
+function physicianErrorText(e: unknown, fallback: string): string {
+  const msg = errorMessage(e, fallback);
+  if (
+    msg.includes('staff_type') ||
+    msg.includes('specialization') ||
+    msg.includes('physicians_staff_type_check')
+  ) {
+    return `${STAFF_TYPE_FIX_SQL}\n\n${msg}`;
+  }
+  return msg;
+}
+
 export function usePhysicians() {
-  const [physicians, setPhysicians] = useState<Physician[]>([]);
+  /** Every row, including inactive – used for name → department lookups */
+  const [allPhysicians, setPhysicians] = useState<Physician[]>([]);
   const [loginLinked, setLoginLinked] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +89,9 @@ export function usePhysicians() {
     };
   }, [reload]);
 
+  /** Pickers, roster page and rosters use active doctors only */
+  const physicians = useMemo(() => allPhysicians.filter((p) => p.active), [allPhysicians]);
+
   const applyAccount = async (
     physicianId: string,
     physicianName: string,
@@ -92,6 +115,11 @@ export function usePhysicians() {
     setLoginLinked((prev) => ({ ...prev, [physicianId]: 'linked' }));
   };
 
+  /**
+   * Returns true when the physician row was saved (so the form can reset), false when it failed.
+   * If the roster row saved but the login step failed, the row exists → returns true and a
+   * toast explains the login problem (retry it from Edit; re-adding would create a duplicate).
+   */
   const addPhysician = useCallback(
     async (
       fields: {
@@ -102,33 +130,30 @@ export function usePhysicians() {
         subSpecialization: string;
       },
       account?: DoctorAccountAction | null
-    ) => {
+    ): Promise<boolean> => {
       if (!isSupabaseConfigured) {
-        alert('Connect Supabase first (set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY).');
-        return;
+        toast.error('Connect Supabase first (set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY).');
+        return false;
       }
+      let row: Physician;
       try {
-        const row = await insertPhysician(fields);
-        setPhysicians((prev) =>
-          [...prev, row].sort((a, b) => a.name.localeCompare(b.name))
-        );
+        row = await insertPhysician(fields);
+      } catch (e) {
+        console.error(e);
+        toast.error(physicianErrorText(e, 'Failed to add physician.'));
+        return false;
+      }
+      setPhysicians((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+      try {
         await applyAccount(row.id, row.name, account);
       } catch (e) {
         console.error(e);
-        alert(
-          e instanceof Error
-            ? e.message.includes('staff_type') ||
-                e.message.includes('specialization') ||
-                e.message.includes('physicians_staff_type_check')
-              ? 'Supabase rejected staff_type. Run this in SQL Editor:\n\n' +
-                "alter table public.physicians drop constraint if exists physicians_staff_type_check;\n" +
-                "alter table public.physicians add constraint physicians_staff_type_check " +
-                "check (staff_type in ('Active', 'Visiting', 'House Physician'));\n\n" +
-                e.message
-              : e.message
-            : 'Failed to add physician.'
+        toast.error(
+          `${row.name} was added to the roster, but the login was not created.\n` +
+            `Open Edit on this physician to retry the login.\n${physicianErrorText(e, 'Login setup failed.')}`
         );
       }
+      return true;
     },
     []
   );
@@ -152,6 +177,7 @@ export function usePhysicians() {
     return row;
   }, []);
 
+  /** Returns true when everything (including the optional login) saved. */
   const editPhysician = useCallback(
     async (
       id: string,
@@ -163,50 +189,50 @@ export function usePhysicians() {
         subSpecialization: string;
       },
       account?: DoctorAccountAction | null
-    ) => {
-      if (!isSupabaseConfigured) return;
+    ): Promise<boolean> => {
+      if (!isSupabaseConfigured) return false;
       try {
         await updatePhysician(id, fields);
-        setPhysicians((prev) =>
-          prev
-            .map((p) => (p.id === id ? { ...p, ...fields } : p))
-            .sort((a, b) => a.name.localeCompare(b.name))
-        );
+      } catch (e) {
+        console.error(e);
+        toast.error(physicianErrorText(e, 'Failed to update physician.'));
+        return false;
+      }
+      setPhysicians((prev) =>
+        prev
+          .map((p) => (p.id === id ? { ...p, ...fields } : p))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+      try {
         await applyAccount(id, fields.name, account);
       } catch (e) {
         console.error(e);
-        alert(
-          e instanceof Error
-            ? e.message.includes('staff_type') ||
-                e.message.includes('specialization') ||
-                e.message.includes('physicians_staff_type_check')
-              ? 'Supabase rejected staff_type. Run this in SQL Editor:\n\n' +
-                "alter table public.physicians drop constraint if exists physicians_staff_type_check;\n" +
-                "alter table public.physicians add constraint physicians_staff_type_check " +
-                "check (staff_type in ('Active', 'Visiting', 'House Physician'));\n\n" +
-                e.message
-              : e.message
-            : 'Failed to update physician.'
+        toast.error(
+          `Physician details were saved, but the login step failed.\n${physicianErrorText(e, 'Login setup failed.')}`
         );
+        return false; // keep the edit row open so the login can be retried
       }
+      return true;
     },
     []
   );
 
-  const removePhysician = useCallback(async (id: string) => {
-    if (!isSupabaseConfigured) return;
+  const removePhysician = useCallback(async (id: string): Promise<boolean> => {
+    if (!isSupabaseConfigured) return false;
     try {
       await deletePhysician(id);
-      setPhysicians((prev) => prev.filter((p) => p.id !== id));
-      setLoginLinked((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
     } catch (e) {
       console.error(e);
-      alert('Failed to delete physician.');
+      toast.error(`Could not delete the physician. They are still on the roster.\n${errorMessage(e)}`);
+      return false;
     }
+    setPhysicians((prev) => prev.filter((p) => p.id !== id));
+    setLoginLinked((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    return true;
   }, []);
 
   /** OPD / Admitting roster — excludes House Physician */
@@ -221,6 +247,7 @@ export function usePhysicians() {
 
   return {
     physicians,
+    allPhysicians,
     physicianNames,
     housePhysicianNames,
     loginLinked,

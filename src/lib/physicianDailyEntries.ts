@@ -289,3 +289,33 @@ export function entryDelta(system: PhysicianStats[], adjusted: PhysicianStats[])
   });
   return d;
 }
+
+/**
+ * Total OPD volume per day (YYYY-MM-DD → consults) using the SAME rules as applyDailyEntries:
+ *  - a doctor who has daily entries in the range → their volume is the entered Total OPD per day
+ *  - every other record (doctors without entries, records with no OPD doctor) → one consult per record
+ * `entries` must already be limited to the range / filters being shown.
+ * Pass applyEntries=false (e.g. ER-only view) to count records only.
+ */
+export function buildVolumeByDate(
+  admissions: { dateOfAdmission: string; opdAttendingPhysician: string }[],
+  entries: PhysicianDailyEntry[],
+  applyEntries: boolean
+): Record<string, number> {
+  const manual = new Set<string>();
+  if (applyEntries) entries.forEach((e) => manual.add(e.physician.trim()));
+
+  const out: Record<string, number> = {};
+  admissions.forEach((a) => {
+    if (!a.dateOfAdmission) return;
+    if (manual.has((a.opdAttendingPhysician || '').trim())) return; // replaced by entries
+    out[a.dateOfAdmission] = (out[a.dateOfAdmission] || 0) + 1;
+  });
+  if (applyEntries) {
+    entries.forEach((e) => {
+      if (!e.date) return;
+      out[e.date] = (out[e.date] || 0) + e.totalOpd;
+    });
+  }
+  return out;
+}

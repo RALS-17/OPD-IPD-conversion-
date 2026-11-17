@@ -13,9 +13,10 @@ const PENDING_DAYS = 3;
 
 interface AdmissionLogProps {
   admissions: Admission[];
-  onAdd: (data: Omit<Admission, 'id' | 'createdAt'>) => void | Promise<void>;
-  onUpdate: (id: string, data: Partial<Admission>) => void | Promise<void>;
-  onDelete: (id: string) => void | Promise<void>;
+  /** Handlers resolve to false when the save failed (the app already showed a toast) */
+  onAdd: (data: Omit<Admission, 'id' | 'createdAt'>) => void | boolean | Promise<void | boolean>;
+  onUpdate: (id: string, data: Partial<Admission>) => void | boolean | Promise<void | boolean>;
+  onDelete: (id: string) => void | boolean | Promise<void | boolean>;
   physicians: string[];
   housePhysicians?: string[];
   departmentByName?: Record<string, string>;
@@ -201,13 +202,17 @@ export default function AdmissionLog({
     setIsFormOpen(true);
   };
 
-  const handleSave = (data: Omit<Admission, 'id' | 'createdAt'>) => {
+  /** Returns false when the save failed so the form stays open with the user's data. */
+  const handleSave = async (data: Omit<Admission, 'id' | 'createdAt'>): Promise<boolean> => {
+    let ok: void | boolean = true;
     if (editing) {
-      if (canEdit) onUpdate(editing.id, data);
+      if (canEdit) ok = await onUpdate(editing.id, data);
     } else if (canAdd) {
-      onAdd(data);
+      ok = await onAdd(data);
     }
+    if (ok === false) return false;
     setEditing(null);
+    return true;
   };
 
   const handleClose = () => {

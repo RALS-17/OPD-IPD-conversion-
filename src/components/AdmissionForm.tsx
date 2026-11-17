@@ -12,7 +12,8 @@ import type {
 interface AdmissionFormProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Omit<Admission, 'id' | 'createdAt'>) => void;
+  /** Return false (or throw) to keep the form open when saving failed */
+  onSave: (data: Omit<Admission, 'id' | 'createdAt'>) => void | boolean | Promise<void | boolean>;
   initialData?: Admission | null;
   physicians: string[];
   /** House Physician roster only (separate from clinical list) */
@@ -220,6 +221,7 @@ export default function AdmissionForm({
   physicianMeta = {},
 }: AdmissionFormProps) {
   const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -260,11 +262,19 @@ export default function AdmissionForm({
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.patientName.trim()) return;
-    onSave(form);
-    onClose();
+    if (saving || !form.patientName.trim()) return;
+    setSaving(true);
+    try {
+      const ok = await onSave(form);
+      // Only close when the save worked; on failure the form stays open with the data intact
+      if (ok !== false) onClose();
+    } catch {
+      /* the caller already showed an error toast; keep the form open */
+    } finally {
+      setSaving(false);
+    }
   };
 
   const field =
@@ -503,10 +513,11 @@ export default function AdmissionForm({
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-white bg-[#1348f3] rounded-md hover:bg-blue-700 transition-colors shadow-sm"
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-white bg-[#1348f3] rounded-md hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Save size={13} />
-              {initialData ? 'Update Record' : 'Save Record'}
+              {saving ? 'Saving…' : initialData ? 'Update Record' : 'Save Record'}
             </button>
           </div>
         </form>

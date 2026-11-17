@@ -10,222 +10,9 @@ import {
 } from '../lib/admissionsApi';
 import { supabase } from '../lib/supabase';
 import { writeAudit } from '../lib/auditLog';
+import { toast, errorMessage } from '../lib/toast';
 
 const STORAGE_KEY = 'globalcare_admissions_v3';
-
-export const SAMPLE_ADMISSIONS: Admission[] = [
-  {
-    id: '1',
-    patientName: 'Juan dela Cruz',
-    address: 'Blk 5 Lot 12, Canlubang, Calamba, Laguna',
-    oldNew: 'New',
-    hhoCash: 'HHO',
-    source: 'ER',
-    patientType: 'Walk-in',
-    chiefComplaint: 'Lagnat, Ubo - 2 Days',
-    diagnosis: 'Viral Pneumonia',
-    advisedForAdmission: 'Yes',
-    opdAttendingPhysician: 'Dr. Maria Santos',
-    opdPatientStatus: 'New',
-    actuallyAdmitted: 'Yes',
-    dateOfAdmission: '2025-05-15',
-    timeOfAdmission: '10:24',
-    admittingPhysician: 'Dr. Jose Reyes',
-    housePhysician: '',
-    remarks: 'Stable, under observation',
-    createdAt: '2025-05-15T10:24:00',
-  },
-  {
-    id: '2',
-    patientName: 'Maria Clara Santos',
-    address: 'Purok 3, Brgy. Mayapa, Calamba City',
-    oldNew: 'Old',
-    hhoCash: 'CASH',
-    source: 'OPD',
-    patientType: 'Private',
-    chiefComplaint: 'Sakit sa dibdib - 1 Day',
-    diagnosis: 'Unstable Angina',
-    advisedForAdmission: 'Yes',
-    opdAttendingPhysician: 'Dr. Angelo Cruz',
-    opdPatientStatus: 'New',
-    actuallyAdmitted: 'Yes',
-    dateOfAdmission: '2025-05-15',
-    timeOfAdmission: '09:58',
-    admittingPhysician: 'Dr. Roberto Villanueva',
-    housePhysician: '',
-    remarks: 'Plan for Angiography',
-    createdAt: '2025-05-15T09:58:00',
-  },
-  {
-    id: '3',
-    patientName: 'Pedro Magtanggol',
-    address: 'Phase 2, Carmelray Industrial Park, Canlubang',
-    oldNew: 'New',
-    hhoCash: 'HHO',
-    source: 'Direct',
-    patientType: 'Walk-in',
-    chiefComplaint: 'Sakit ng tiyan - 3 Days',
-    diagnosis: 'Acute Gastritis',
-    advisedForAdmission: 'Yes',
-    opdAttendingPhysician: 'Dr. Liza Mendoza',
-    opdPatientStatus: 'New',
-    actuallyAdmitted: 'Yes',
-    dateOfAdmission: '2025-05-15',
-    timeOfAdmission: '09:41',
-    admittingPhysician: 'Dr. Ana Patricia Gomez',
-    housePhysician: '',
-    remarks: 'IV fluids given',
-    createdAt: '2025-05-15T09:41:00',
-  },
-  {
-    id: '4',
-    patientName: 'Rosario Bautista',
-    address: 'Sitio Maligaya, Brgy. Canlubang, Laguna',
-    oldNew: 'Old',
-    hhoCash: 'CASH',
-    source: 'ER',
-    patientType: 'Walk-in',
-    chiefComplaint: 'Hirap huminga - 2 Days',
-    diagnosis: 'COPD Exacerbation',
-    advisedForAdmission: 'Yes',
-    opdAttendingPhysician: 'Dr. Maria Santos',
-    opdPatientStatus: 'New',
-    actuallyAdmitted: 'Yes',
-    dateOfAdmission: '2025-05-15',
-    timeOfAdmission: '09:15',
-    admittingPhysician: 'Dr. Jose Reyes',
-    housePhysician: '',
-    remarks: 'Nebulization started',
-    createdAt: '2025-05-15T09:15:00',
-  },
-  {
-    id: '5',
-    patientName: 'Carlos Miguel Rivera',
-    address: 'Villa de Calamba, Laguna',
-    oldNew: 'New',
-    hhoCash: 'HHO',
-    source: 'OPD',
-    patientType: 'Private',
-    chiefComplaint: 'Sakit ng ulo, Pagsusuka - 1 Day',
-    diagnosis: 'Migraine',
-    advisedForAdmission: 'Yes',
-    opdAttendingPhysician: 'Dr. Angelo Cruz',
-    opdPatientStatus: 'New',
-    actuallyAdmitted: 'No',
-    dateOfAdmission: '2025-05-15',
-    timeOfAdmission: '08:52',
-    admittingPhysician: '',
-    housePhysician: '',
-    remarks: 'Awaiting bed availability',
-    createdAt: '2025-05-15T08:52:00',
-  },
-  {
-    id: '6',
-    patientName: 'Angela Mae Flores',
-    address: 'Brgy. Real, Calamba City, Laguna',
-    oldNew: 'New',
-    hhoCash: 'HHO',
-    source: 'OPD',
-    patientType: 'Private',
-    chiefComplaint: 'Masakit ang likod - 4 Days',
-    diagnosis: 'Lumbar Strain',
-    advisedForAdmission: 'Yes',
-    opdAttendingPhysician: 'Dr. Paolo Enriquez',
-    opdPatientStatus: 'New',
-    actuallyAdmitted: 'Yes',
-    dateOfAdmission: '2025-05-15',
-    timeOfAdmission: '08:30',
-    admittingPhysician: 'Dr. Jose Reyes',
-    housePhysician: '',
-    remarks: 'For PT referral',
-    createdAt: '2025-05-15T08:30:00',
-  },
-  {
-    id: '7',
-    patientName: 'Ricardo Torres',
-    address: 'Banlic, Calamba, Laguna',
-    oldNew: 'Old',
-    hhoCash: 'CASH',
-    source: 'ER',
-    patientType: 'Walk-in',
-    chiefComplaint: 'High blood, dizziness',
-    diagnosis: 'Hypertensive Urgency',
-    advisedForAdmission: 'Yes',
-    opdAttendingPhysician: 'Dr. Liza Mendoza',
-    opdPatientStatus: 'New',
-    actuallyAdmitted: 'Yes',
-    dateOfAdmission: '2025-05-15',
-    timeOfAdmission: '08:15',
-    admittingPhysician: 'Dr. Roberto Villanueva',
-    housePhysician: '',
-    remarks: 'BP monitoring q1h',
-    createdAt: '2025-05-15T08:15:00',
-  },
-  {
-    id: '8',
-    patientName: 'Sofia Gabriela Lim',
-    address: 'Poblacion, Canlubang, Laguna',
-    oldNew: 'New',
-    hhoCash: 'HHO',
-    source: 'Direct',
-    patientType: 'Walk-in',
-    chiefComplaint: 'Hirap huminga - 1 Day',
-    diagnosis: 'Bronchial Asthma',
-    advisedForAdmission: 'Yes',
-    opdAttendingPhysician: 'Dr. Maria Santos',
-    opdPatientStatus: 'New',
-    actuallyAdmitted: 'Yes',
-    dateOfAdmission: '2025-05-15',
-    timeOfAdmission: '08:00',
-    admittingPhysician: 'Dr. Ana Patricia Gomez',
-    housePhysician: '',
-    remarks: 'O2 support',
-    createdAt: '2025-05-15T08:00:00',
-  },
-  {
-    id: '9',
-    patientName: 'Andres Bonifacio Jr.',
-    address: 'Brgy. Bubuyan, Calamba, Laguna',
-    oldNew: 'New',
-    hhoCash: 'HHO',
-    source: 'OPD',
-    patientType: 'Private',
-    chiefComplaint: 'Lagnat, Ubo - 3 Days',
-    diagnosis: 'Viral Pneumonia',
-    advisedForAdmission: 'Yes',
-    opdAttendingPhysician: 'Dr. Maria Santos',
-    opdPatientStatus: 'New',
-    actuallyAdmitted: 'Yes',
-    dateOfAdmission: '2025-05-14',
-    timeOfAdmission: '16:20',
-    admittingPhysician: 'Dr. Jose Reyes',
-    housePhysician: '',
-    remarks: '',
-    createdAt: '2025-05-14T16:20:00',
-  },
-  {
-    id: '10',
-    patientName: 'Gabriela Silang',
-    address: 'Turbina, Calamba City',
-    oldNew: 'Old',
-    hhoCash: 'CASH',
-    source: 'ER',
-    patientType: 'Walk-in',
-    chiefComplaint: 'Sakit ng tiyan - 2 Days',
-    diagnosis: 'Acute Gastritis',
-    advisedForAdmission: 'Yes',
-    opdAttendingPhysician: 'Dr. Liza Mendoza',
-    opdPatientStatus: 'New',
-    actuallyAdmitted: 'Yes',
-    dateOfAdmission: '2025-05-14',
-    timeOfAdmission: '14:05',
-    admittingPhysician: 'Dr. Ana Patricia Gomez',
-    housePhysician: '',
-    remarks: '',
-    createdAt: '2025-05-14T14:05:00',
-  }
-
-];
 
 function normalizeAdmission(raw: Partial<Admission> & { id: string }): Admission {
   let time = raw.timeOfAdmission || '';
@@ -377,71 +164,90 @@ export function useAdmissions() {
   }, []);
 
 
-  const addAdmission = useCallback(async (data: Omit<Admission, 'id' | 'createdAt'>) => {
-    if (isSupabaseConfigured) {
-      try {
-        const row = await insertAdmission(data);
-        setAdmissions((prev) => [normalizeAdmission(row), ...prev]);
-        void writeAudit({
-          action: 'create',
-          entityId: row.id,
-          summary: `Added admission: ${data.patientName || 'patient'}`,
-          actorName: auditActorRef.current.name,
-          actorEmail: auditActorRef.current.email,
-        });
-        return;
-      } catch (err) {
-        console.error('Supabase insert failed', err);
-        alert('Failed to save to database. Check Supabase connection.');
-        return;
+  /** Returns true when the record was saved, false when it failed (a toast explains why). */
+  const addAdmission = useCallback(
+    async (data: Omit<Admission, 'id' | 'createdAt'>): Promise<boolean> => {
+      if (isSupabaseConfigured) {
+        try {
+          const row = await insertAdmission(data);
+          // Realtime may already have added this row — never create a duplicate
+          setAdmissions((prev) =>
+            prev.some((a) => a.id === row.id) ? prev : [normalizeAdmission(row), ...prev]
+          );
+          void writeAudit({
+            action: 'create',
+            entityId: row.id,
+            summary: `Added admission: ${data.patientName || 'patient'}`,
+            actorName: auditActorRef.current.name,
+            actorEmail: auditActorRef.current.email,
+          });
+          toast.success('Admission record saved.');
+          return true;
+        } catch (err) {
+          console.error('Supabase insert failed', err);
+          toast.error(
+            `Could not save the admission record. Nothing was saved, so please try again.\n${errorMessage(err)}`
+          );
+          return false;
+        }
       }
-    }
-    const newAdmission: Admission = {
-      ...data,
-      patientType: data.patientType || 'Private',
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-    };
-    setAdmissions((prev) => [newAdmission, ...prev]);
-    void writeAudit({
-      action: 'create',
-      entityId: newAdmission.id,
-      summary: `Added admission: ${data.patientName || 'patient'}`,
-      actorName: auditActorRef.current.name,
-      actorEmail: auditActorRef.current.email,
-    });
-  }, []);
+      const newAdmission: Admission = {
+        ...data,
+        patientType: data.patientType || 'Private',
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      };
+      setAdmissions((prev) => [newAdmission, ...prev]);
+      void writeAudit({
+        action: 'create',
+        entityId: newAdmission.id,
+        summary: `Added admission: ${data.patientName || 'patient'}`,
+        actorName: auditActorRef.current.name,
+        actorEmail: auditActorRef.current.email,
+      });
+      toast.success('Admission record saved.');
+      return true;
+    },
+    []
+  );
 
-  const updateAdmission = useCallback(async (id: string, data: Partial<Admission>) => {
-    if (isSupabaseConfigured) {
-      try {
-        await updateAdmissionRow(id, data);
-      } catch (err) {
-        console.error('Supabase update failed', err);
-        alert('Failed to update in database.');
-        return;
+  const updateAdmission = useCallback(
+    async (id: string, data: Partial<Admission>): Promise<boolean> => {
+      if (isSupabaseConfigured) {
+        try {
+          await updateAdmissionRow(id, data);
+        } catch (err) {
+          console.error('Supabase update failed', err);
+          toast.error(
+            `Could not update the admission record. Your changes were not saved.\n${errorMessage(err)}`
+          );
+          return false;
+        }
       }
-    }
-    setAdmissions((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, ...data } : a))
-    );
-    void writeAudit({
-      action: 'update',
-      entityId: id,
-      summary: `Updated admission ${id.slice(0, 8)}…`,
-      actorName: auditActorRef.current.name,
-      actorEmail: auditActorRef.current.email,
-    });
-  }, []);
+      setAdmissions((prev) => prev.map((a) => (a.id === id ? { ...a, ...data } : a)));
+      void writeAudit({
+        action: 'update',
+        entityId: id,
+        summary: `Updated admission ${id.slice(0, 8)}…`,
+        actorName: auditActorRef.current.name,
+        actorEmail: auditActorRef.current.email,
+      });
+      toast.success('Admission record updated.');
+      return true;
+    },
+    []
+  );
 
-  const deleteAdmission = useCallback(async (id: string) => {
+  const deleteAdmission = useCallback(async (id: string): Promise<boolean> => {
     if (isSupabaseConfigured) {
       try {
         await deleteAdmissionRow(id);
       } catch (err) {
         console.error('Supabase delete failed', err);
-        alert('Failed to delete from database.');
-        return;
+        toast.error(
+          `Could not delete the admission record. It is still in the log.\n${errorMessage(err)}`
+        );
+        return false;
       }
     }
     setAdmissions((prev) => prev.filter((a) => a.id !== id));
@@ -452,22 +258,20 @@ export function useAdmissions() {
       actorName: auditActorRef.current.name,
       actorEmail: auditActorRef.current.email,
     });
+    toast.success('Admission record deleted.');
+    return true;
   }, []);
 
-  const clearAllData = useCallback(async () => {
+  /** Returns true only when data was actually cleared. */
+  const clearAllData = useCallback(async (): Promise<boolean> => {
     if (isSupabaseConfigured) {
-      alert('Clear all is disabled while using Supabase. Delete rows in Supabase Table Editor if needed.');
-      return;
+      toast.info(
+        'Clear all is disabled while using Supabase. Delete rows in the Supabase Table Editor if needed.'
+      );
+      return false;
     }
     setAdmissions([]);
-  }, []);
-
-  const reloadSampleData = useCallback(() => {
-    if (isSupabaseConfigured) {
-      alert('Reload sample is for local mode only. Seed data via SQL in Supabase if needed.');
-      return;
-    }
-    setAdmissions(SAMPLE_ADMISSIONS);
+    return true;
   }, []);
 
   const computeKpis = useCallback((list: Admission[]) => {
@@ -588,7 +392,12 @@ export function useAdmissions() {
   );
 
 
-  const getMonthlyTrend = useCallback((list?: Admission[]) => {
+  /**
+   * Daily conversion trend.
+   * volumeByDate (YYYY-MM-DD → total OPD consults that day) lets daily entries feed the
+   * denominator exactly; without it the denominator is the number of records that day.
+   */
+  const getMonthlyTrend = useCallback((list?: Admission[], volumeByDate?: Record<string, number>) => {
     const source = list ?? admissions;
     // Prefer month with the most rows in the list; fall back to current calendar month
     const now = new Date();
@@ -644,10 +453,14 @@ export function useAdmissions() {
         : daysInMonth;
 
     const points: { day: number; value: number }[] = [];
+    const mm = String(month + 1).padStart(2, '0');
     for (let d = 1; d <= lastDay; d++) {
-      const { total, admitted } = byDay[d];
-      const raw =
-        total > 0 ? Math.round((admitted / total) * 1000) / 10 : 0;
+      const { total: recordCount, admitted } = byDay[d];
+      const dayKey = `${year}-${mm}-${String(d).padStart(2, '0')}`;
+      const total = volumeByDate ? volumeByDate[dayKey] ?? 0 : recordCount;
+      // Admitted can never exceed 100% of the day's volume
+      const denom = Math.max(total, admitted);
+      const raw = denom > 0 ? Math.round((admitted / denom) * 1000) / 10 : 0;
       points.push({
         day: d,
         value: Math.min(100, Math.max(0, raw)),
@@ -718,7 +531,6 @@ export function useAdmissions() {
     updateAdmission,
     deleteAdmission,
     clearAllData,
-    reloadSampleData,
     exportCsv,
     getPhysicianStats,
     getKpis,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ClipboardEvent, KeyboardEvent } from 'react';
+import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { X, Plus, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { DailyEntryRowInput, PhysicianDailyEntry } from '../lib/physicianDailyEntries';
 
@@ -209,7 +209,7 @@ export default function DailyEntryModal({
   };
 
   const onCellKeyDown = (
-    e: KeyboardEvent<HTMLInputElement>,
+    e: ReactKeyboardEvent<HTMLInputElement>,
     rowId: string,
     colIdx: number
   ) => {

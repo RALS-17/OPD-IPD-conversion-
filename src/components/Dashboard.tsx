@@ -2,15 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Users,
   BedDouble,
-  TrendingUp,
   ArrowUpRight,
-  Calendar,
   Shield,
   Wallet,
   UserRound,
   Footprints,
-  UserPlus,
-  History,
 } from 'lucide-react';
 import type { Admission, PhysicianStats, RankedItem } from '../types';
 import { HOUSE_PHYSICIAN_DEPARTMENTS } from '../types';
@@ -79,20 +75,6 @@ interface DashboardProps {
   onPhysicianClick?: (name: string) => void;
 }
 
-function deltaLabel(cur: number, prev: number | undefined | null, suffix = ''): string | null {
-  if (prev === undefined || prev === null) return null;
-  const d = Math.round((cur - prev) * 10) / 10;
-  const sign = d > 0 ? '+' : '';
-  return `${sign}${d}${suffix}`;
-}
-
-function deltaTone(cur: number, prev: number | undefined | null): string {
-  if (prev === undefined || prev === null) return 'text-slate-400';
-  if (cur > prev) return 'text-emerald-600';
-  if (cur < prev) return 'text-red-500';
-  return 'text-slate-400';
-}
-
 function dateFilterLabel(
   preset: string,
   dateFrom: string,
@@ -154,8 +136,6 @@ export default function Dashboard({
   physicianNames = [],
   recordScopeFilter = 'consults',
   onRecordScopeFilter,
-  onExport,
-  onPrintSnapshot,
   filteredCount,
   filteredAdmissions,
   onPhysicianClick,

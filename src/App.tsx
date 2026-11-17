@@ -22,12 +22,15 @@ import {
 } from './lib/admissionFilters';
 import { LogOut } from 'lucide-react';
 import NotificationBell from './components/NotificationBell';
+import Toaster from './components/Toaster';
+import { toast } from './lib/toast';
 import { buildNotifications } from './lib/notifications';
 import PhysicianDetail from './components/PhysicianDetail';
 import { printDashboardSnapshot } from './lib/printDashboard';
 import {
   applyDailyEntries,
   entryDelta,
+  buildVolumeByDate,
   filterEntriesByRange,
   sumEntriesByPhysician,
 } from './lib/physicianDailyEntries';
@@ -152,7 +155,6 @@ export default function App() {
     updateAdmission,
     deleteAdmission,
     clearAllData,
-    reloadSampleData,
     exportCsv,
     getPhysicianStats,
     getKpis,
@@ -167,6 +169,7 @@ export default function App() {
 
   const {
     physicians,
+    allPhysicians,
     physicianNames,
     housePhysicianNames,
     loginLinked,
@@ -241,11 +244,12 @@ export default function App() {
     return <PageSkeleton page={currentPage} collapsed={collapsed} />;
   }
 
+  // Lookups use EVERY physician (even inactive) so old records still resolve their department
   const departmentByName = Object.fromEntries(
-    physicians.map((p) => [p.name, p.department])
+    allPhysicians.map((p) => [p.name, p.department])
   );
   const physicianMeta = Object.fromEntries(
-    physicians.map((p) => [
+    allPhysicians.map((p) => [
       p.name,
       {
         staffType: p.staffType,
@@ -265,8 +269,9 @@ export default function App() {
   // Permissions: admin = everything · admitting staff = add/edit admissions only · doctor = view only
   const canAddEditAdmissions = isAdmin || isStaff;
   const canDeleteAdmissions = isAdmin;
-  const denied = async () => {
-    window.alert('You do not have permission to do that.');
+  const denied = async (): Promise<boolean> => {
+    toast.error('You do not have permission to do that.');
+    return false;
   };
   // Doctors don't need the full doctor roster
   const visiblePhysicianNames = isDoctor
@@ -377,17 +382,18 @@ export default function App() {
       }
     : null;
 
-  const prevMonthlyTrendRaw = prevRangeInfo ? getMonthlyTrend(prevAdmissions) : null;
-  const prevConversionScale =
-    prevVolume > 0 && prevAdmissions.length > 0 ? prevAdmissions.length / prevVolume : 1;
-  const prevMonthlyTrend = prevMonthlyTrendRaw
-    ? {
-        ...prevMonthlyTrendRaw,
-        points: prevMonthlyTrendRaw.points.map((pt) => ({
-          ...pt,
-          value: Math.min(100, Math.round(pt.value * prevConversionScale * 10) / 10),
-        })),
-      }
+  // Exact daily volume (records + daily entries, same rules as the totals above)
+  const prevMonthlyTrend = prevRangeInfo
+    ? getMonthlyTrend(
+        prevAdmissions,
+        buildVolumeByDate(
+          prevAdmissions,
+          filterEntriesByRange(scopedEntries, prevRangeInfo.from, prevRangeInfo.to).filter((e) =>
+            matchesDashFilters(e.physician)
+          ),
+          manualApplies
+        )
+      )
     : null;
 
   const systemPhysicianStats = getPhysicianStats(filteredAdmissions);
@@ -422,18 +428,14 @@ export default function App() {
         : 0,
   };
   const topDiagnoses = getTopDiagnoses(filteredAdmissions, 10);
-  const conversionScale =
-    totalVolume > 0 && filteredAdmissions.length > 0
-      ? filteredAdmissions.length / totalVolume
-      : 1;
-  const monthlyTrendRaw = getMonthlyTrend(filteredAdmissions);
-  const monthlyTrend = {
-    ...monthlyTrendRaw,
-    points: monthlyTrendRaw.points.map((pt) => ({
-      ...pt,
-      value: Math.min(100, Math.round(pt.value * conversionScale * 10) / 10),
-    })),
-  };
+  const monthlyTrend = getMonthlyTrend(
+    filteredAdmissions,
+    buildVolumeByDate(
+      filteredAdmissions,
+      entriesInRange.filter((e) => matchesDashFilters(e.physician)),
+      manualApplies
+    )
+  );
 
   // Physician Summary: its own date range, all sources, daily entries applied
   const sumRange =
@@ -454,7 +456,7 @@ export default function App() {
 
   /** Save one date for many doctors at once (adds new doctors to the roster first). */
   const handleSaveDailyEntries = async ({ date, rows, newDoctors }: DailyEntrySavePayload) => {
-    const existing = new Set(physicians.map((p) => p.name.trim().toLowerCase()));
+    const existing = new Set(allPhysicians.map((p) => p.name.trim().toLowerCase()));
     for (const name of newDoctors) {
       if (existing.has(name.trim().toLowerCase())) continue; // already in the roster
       try {
@@ -720,7 +722,6 @@ export default function App() {
                 onResetSettings={resetSettings}
                 onExportCsv={() => exportCsv(roleScopedAdmissions)}
                 onClearData={isAdmin ? clearAllData : denied}
-                onReloadSample={isAdmin ? reloadSampleData : denied}
                 admissionCount={admissions.length}
                 isAdmin={isAdmin}
               />
@@ -728,6 +729,8 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      <Toaster />
 
       {drillPhysician && (
         <PhysicianDetail
