@@ -1,22 +1,32 @@
 import { useMemo, useState } from 'react';
-import { Pencil, Check, X } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import type { PhysicianStats } from '../types';
+import { HOUSE_PHYSICIAN_DEPARTMENTS } from '../types';
 import {
-  applyOpdConsultOverrides,
-  loadOpdConsultOverrides,
-  upsertOpdConsultTotal,
-  type OpdConsultOverrides,
-} from '../lib/opdConsultOverrides';
+  cashTotal,
+  hmoTotal,
+  privateTotal,
+  walkInTotal,
+  type PhysicianDailyEntry,
+} from '../lib/physicianDailyEntries';
+import { toYmd } from '../lib/admissionFilters';
+import DailyEntryModal, { type DailyEntrySavePayload } from './DailyEntryModal';
+
 interface PhysicianSummaryProps {
+  /** Stats with daily entries already applied for the selected date range */
   stats: PhysicianStats[];
   goodThreshold: number;
   averageThreshold: number;
   departmentByName?: Record<string, string>;
   onPhysicianClick?: (name: string) => void;
-  /** When overrides change (so Dashboard can stay in sync if needed) */
-  onOpdOverridesChange?: (map: OpdConsultOverrides) => void;
-  /** Controlled overrides from parent; if omitted, loads from localStorage */
-  opdOverrides?: OpdConsultOverrides;
+  /** Admin / staff can edit daily entries; doctors are read-only */
+  canEdit?: boolean;
+  /** Doctors listed in the edit window (roster, without House Physicians) */
+  rosterNames?: string[];
+  /** Every saved daily entry (all dates) – used to pre-fill the edit window */
+  entries?: PhysicianDailyEntry[];
+  entriesError?: string | null;
+  onSaveDailyEntries?: (payload: DailyEntrySavePayload) => Promise<void>;
   datePreset?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -36,8 +46,11 @@ export default function PhysicianSummary({
   averageThreshold,
   onPhysicianClick,
   departmentByName = {},
-  onOpdOverridesChange,
-  opdOverrides: controlledOverrides,
+  canEdit = false,
+  rosterNames = [],
+  entries = [],
+  entriesError = null,
+  onSaveDailyEntries,
   datePreset = 'month',
   dateFrom = '',
   dateTo = '',
@@ -50,17 +63,11 @@ export default function PhysicianSummary({
   onDoctorFilter,
   physicianNames = [],
 }: PhysicianSummaryProps) {
-  const [localOverrides, setLocalOverrides] = useState<OpdConsultOverrides>(() =>
-    loadOpdConsultOverrides()
-  );
-  const overrides = controlledOverrides ?? localOverrides;
-
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
   const [doctorSearch, setDoctorSearch] = useState('');
+  const [showEditor, setShowEditor] = useState(false);
 
   const displayStats = useMemo(() => {
-    let base = applyOpdConsultOverrides(stats, overrides);
+    let base = stats;
     if (doctorFilter !== 'All') {
       base = base.filter((s) => s.physician === doctorFilter);
     }
@@ -72,7 +79,33 @@ export default function PhysicianSummary({
     const q = doctorSearch.trim().toLowerCase();
     if (q) base = base.filter((s) => s.physician.toLowerCase().includes(q));
     return base;
-  }, [stats, overrides, doctorSearch, doctorFilter, departmentFilter, departmentByName]);
+  }, [stats, doctorSearch, doctorFilter, departmentFilter, departmentByName]);
+
+  const totals = useMemo(() => {
+    const t = {
+      totalOpd: 0,
+      advised: 0,
+      actual: 0,
+      privateHmo: 0,
+      privateCash: 0,
+      walkInHmo: 0,
+      walkInCash: 0,
+      admissions: 0,
+    };
+    displayStats.forEach((s) => {
+      t.totalOpd += s.totalOpdConsults;
+      t.advised += s.opdAdvisedAdmission;
+      t.actual += s.actualAdmissionsFromOpd;
+      t.privateHmo += s.privateHmo;
+      t.privateCash += s.privateCash;
+      t.walkInHmo += s.walkInHmo;
+      t.walkInCash += s.walkInCash;
+      t.admissions += s.totalAdmissions;
+    });
+    return t;
+  }, [displayStats]);
+  const totalConversion =
+    totals.totalOpd > 0 ? Math.round((totals.actual / totals.totalOpd) * 1000) / 10 : 0;
 
   const avgConversion =
     displayStats.length > 0
@@ -83,33 +116,6 @@ export default function PhysicianSummary({
       : 0;
 
   const topPerformer = displayStats[0];
-
-  const commitOverrides = (next: OpdConsultOverrides) => {
-    if (controlledOverrides === undefined) setLocalOverrides(next);
-    onOpdOverridesChange?.(next);
-  };
-
-  const startEdit = (physician: string, current: number) => {
-    setEditing(physician);
-    setEditValue(String(current));
-  };
-
-  const cancelEdit = () => {
-    setEditing(null);
-    setEditValue('');
-  };
-
-  const saveEdit = async (physician: string) => {
-    const n = Number(editValue);
-    if (!Number.isFinite(n) || n < 0) {
-      cancelEdit();
-      return;
-    }
-    // Permanent total for this doctor (shared via Supabase when configured)
-    const next = await upsertOpdConsultTotal(physician, n);
-    commitOverrides(next);
-    cancelEdit();
-  };
 
   return (
     <div className="flex flex-col gap-2.5 h-full min-h-0">
@@ -165,7 +171,9 @@ export default function PhysicianSummary({
             <option value="All">All departments</option>
             {Array.from(
               new Set(
-                Object.values(departmentByName || {}).filter(Boolean) as string[]
+                (Object.values(departmentByName || {}).filter(Boolean) as string[]).filter(
+                  (d) => !(HOUSE_PHYSICIAN_DEPARTMENTS as readonly string[]).includes(d)
+                )
               )
             )
               .sort()
@@ -197,8 +205,24 @@ export default function PhysicianSummary({
             placeholder="Search..."
             className="h-8 w-[140px] px-2.5 text-[11px] border border-slate-200 rounded-md bg-white focus:outline-none"
           />
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setShowEditor(true)}
+              className="h-8 px-3 inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-md bg-[#1348f3] text-white hover:bg-blue-700"
+              title="Enter or correct the daily values for all doctors"
+            >
+              <Pencil size={12} /> Edit daily entries
+            </button>
+          )}
         </div>
       </div>
+
+      {entriesError && (
+        <div className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800">
+          {entriesError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 shrink-0">
         <div className="bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5">
@@ -256,6 +280,10 @@ export default function PhysicianSummary({
                 <th className="px-2 py-2 font-semibold text-[10px] text-right">
                   Total OPD Consults
                 </th>
+                <th className="px-2 py-2 font-semibold text-[10px] text-right">PRIVATE</th>
+                <th className="px-2 py-2 font-semibold text-[10px] text-right">WALK-IN</th>
+                <th className="px-2 py-2 font-semibold text-[10px] text-right">HMO</th>
+                <th className="px-2 py-2 font-semibold text-[10px] text-right">CASH</th>
                 <th className="px-2 py-2 font-semibold text-[10px] text-right">
                   OPD Advised Admission
                 </th>
@@ -273,132 +301,140 @@ export default function PhysicianSummary({
             <tbody>
               {displayStats.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-slate-400 text-[12px]">
+                  <td colSpan={10} className="px-3 py-10 text-center text-slate-400 text-[12px]">
                     No physician data available
                   </td>
                 </tr>
               ) : (
-                displayStats.map((s, idx) => {
-                  const isEditing = editing === s.physician;
-                  return (
-                    <tr
-                      key={s.physician}
-                      className={`border-b border-slate-100 ${
-                        idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'
-                      } hover:bg-blue-50/40 transition-colors`}
-                    >
-                      <td className="px-3 py-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onPhysicianClick?.(s.physician)}
-                          className="flex items-center gap-1.5 text-left group"
-                          title="View physician details"
-                        >
-                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-[8px] font-bold text-blue-700 shrink-0">
-                            {s.physician
-                              .replace('Dr. ', '')
-                              .split(' ')
-                              .map((n) => n[0])
-                              .join('')
-                              .slice(0, 2)}
-                          </div>
-                          <span className="font-medium text-slate-800 group-hover:text-[#1348f3] group-hover:underline">
-                            {s.physician}
-                          </span>
-                        </button>
-                      </td>
-                      <td className="px-2 py-1.5 text-right">
-                        {isEditing ? (
-                          <div className="inline-flex items-center justify-end gap-0.5">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveEdit(s.physician);
-                                if (e.key === 'Escape') cancelEdit();
-                              }}
-                              className="w-16 text-right text-[11px] border border-[#1348f3] rounded px-1 py-0.5 focus:outline-none"
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              onClick={() => saveEdit(s.physician)}
-                              className="p-0.5 text-emerald-600 hover:bg-emerald-50 rounded"
-                              title="Save"
-                            >
-                              <Check size={13} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelEdit}
-                              className="p-0.5 text-slate-400 hover:bg-slate-100 rounded"
-                              title="Cancel"
-                            >
-                              <X size={13} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="inline-flex items-center justify-end gap-1">
-                            <span className="tabular-nums text-slate-600">
-                              {s.totalOpdConsults}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => startEdit(s.physician, s.totalOpdConsults)}
-                              className="p-0.5 text-slate-400 hover:text-[#1348f3] hover:bg-blue-50 rounded"
-                              title="Edit Total OPD Consults"
-                            >
-                              <Pencil size={12} />
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 text-right text-slate-600">
-                        {s.opdAdvisedAdmission}
-                      </td>
-                      <td className="px-2 py-1.5 text-right text-slate-600">
-                        {s.actualAdmissionsFromOpd}
-                      </td>
-                      <td className="px-2 py-1.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <div className="w-14 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                s.conversionRate >= goodThreshold
-                                  ? 'bg-emerald-500'
-                                  : s.conversionRate >= averageThreshold
-                                    ? 'bg-amber-400'
-                                    : 'bg-red-400'
-                              }`}
-                              style={{
-                                width: `${Math.min(s.conversionRate, 100)}%`,
-                              }}
-                            />
-                          </div>
-                          <span
-                            className={`font-semibold min-w-[40px] text-right ${
-                              s.conversionRate >= goodThreshold
-                                ? 'text-emerald-600'
-                                : s.conversionRate >= averageThreshold
-                                  ? 'text-amber-600'
-                                  : 'text-red-500'
-                            }`}
-                          >
-                            {s.conversionRate}%
-                          </span>
+                displayStats.map((s, idx) => (
+                  <tr
+                    key={s.physician}
+                    className={`border-b border-slate-100 ${
+                      idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'
+                    } hover:bg-blue-50/40 transition-colors`}
+                  >
+                    <td className="px-3 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onPhysicianClick?.(s.physician)}
+                        className="flex items-center gap-1.5 text-left group"
+                        title="View physician details"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-[8px] font-bold text-blue-700 shrink-0">
+                          {s.physician
+                            .replace('Dr. ', '')
+                            .split(' ')
+                            .map((n) => n[0])
+                            .join('')
+                            .slice(0, 2)}
                         </div>
-                      </td>
-                      <td className="px-2 py-1.5 text-right text-slate-600">
-                        {s.totalAdmissions}
-                      </td>
-                    </tr>
-                  );
-                })
+                        <span className="font-medium text-slate-800 group-hover:text-[#1348f3] group-hover:underline">
+                          {s.physician}
+                        </span>
+                      </button>
+                    </td>
+                    <td
+                      className="px-2 py-1.5 text-right tabular-nums text-slate-600"
+                      title={
+                        s.isManualOpd
+                          ? 'Added up from daily entries'
+                          : 'Counted from the Admission Log (no daily entries in this period)'
+                      }
+                    >
+                      {s.totalOpdConsults}
+                    </td>
+                    <td className="px-2 py-1.5 text-right whitespace-nowrap text-slate-600">
+                      <span className="tabular-nums font-semibold">{privateTotal(s)}</span>
+                      <span className="ml-1 text-[10px] text-slate-400">
+                        ({s.privateHmo} HMO, {s.privateCash} CASH)
+                      </span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right whitespace-nowrap text-slate-600">
+                      <span className="tabular-nums font-semibold">{walkInTotal(s)}</span>
+                      <span className="ml-1 text-[10px] text-slate-400">
+                        ({s.walkInHmo} HMO, {s.walkInCash} CASH)
+                      </span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
+                      {hmoTotal(s)}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
+                      {cashTotal(s)}
+                    </td>
+                    <td className="px-2 py-1.5 text-right text-slate-600">
+                      {s.opdAdvisedAdmission}
+                    </td>
+                    <td className="px-2 py-1.5 text-right text-slate-600">
+                      {s.actualAdmissionsFromOpd}
+                    </td>
+                    <td className="px-2 py-1.5 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <div className="w-14 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              s.conversionRate >= goodThreshold
+                                ? 'bg-emerald-500'
+                                : s.conversionRate >= averageThreshold
+                                  ? 'bg-amber-400'
+                                  : 'bg-red-400'
+                            }`}
+                            style={{ width: `${Math.min(s.conversionRate, 100)}%` }}
+                          />
+                        </div>
+                        <span
+                          className={`font-semibold min-w-[40px] text-right ${
+                            s.conversionRate >= goodThreshold
+                              ? 'text-emerald-600'
+                              : s.conversionRate >= averageThreshold
+                                ? 'text-amber-600'
+                                : 'text-red-500'
+                          }`}
+                        >
+                          {s.conversionRate}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5 text-right text-slate-600">
+                      {s.totalAdmissions}
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
+            {displayStats.length > 0 && (
+              <tfoot className="sticky bottom-0 bg-white">
+                <tr className="border-t-2 border-slate-200 font-semibold text-slate-800">
+                  <td className="px-3 py-2">Total</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{totals.totalOpd}</td>
+                  <td className="px-2 py-2 text-right whitespace-nowrap">
+                    <span className="tabular-nums">
+                      {totals.privateHmo + totals.privateCash}
+                    </span>
+                    <span className="ml-1 text-[10px] font-normal text-slate-400">
+                      ({totals.privateHmo} HMO, {totals.privateCash} CASH)
+                    </span>
+                  </td>
+                  <td className="px-2 py-2 text-right whitespace-nowrap">
+                    <span className="tabular-nums">
+                      {totals.walkInHmo + totals.walkInCash}
+                    </span>
+                    <span className="ml-1 text-[10px] font-normal text-slate-400">
+                      ({totals.walkInHmo} HMO, {totals.walkInCash} CASH)
+                    </span>
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums">
+                    {totals.privateHmo + totals.walkInHmo}
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums">
+                    {totals.privateCash + totals.walkInCash}
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums">{totals.advised}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{totals.actual}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{totalConversion}%</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{totals.admissions}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
 
@@ -416,9 +452,21 @@ export default function PhysicianSummary({
             <span className="w-2 h-2 rounded-full bg-red-400" />
             {`< ${averageThreshold}% Needs Improvement`}
           </span>
-          <span className="text-slate-400">· Pencil = edit Total OPD Consults</span>
+          <span className="text-slate-400">
+            · Daily entries are added up for the selected period; doctors with no entries use the Admission Log count
+          </span>
         </div>
       </div>
+
+      {showEditor && canEdit && onSaveDailyEntries && (
+        <DailyEntryModal
+          initialDate={toYmd(new Date())}
+          rosterNames={rosterNames}
+          entries={entries}
+          onClose={() => setShowEditor(false)}
+          onSave={onSaveDailyEntries}
+        />
+      )}
     </div>
   );
 }

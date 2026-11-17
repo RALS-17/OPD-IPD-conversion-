@@ -12,10 +12,11 @@ export interface AuthProfile {
   physicianName: string | null;
 }
 
+// Unknown / missing role = least privilege (view-only, linked to no physician → sees nothing)
 function parseRole(raw: unknown): UserRole {
   if (raw === 'admin') return 'admin';
-  if (raw === 'doctor') return 'doctor';
-  return 'staff';
+  if (raw === 'staff') return 'staff';
+  return 'doctor';
 }
 
 export function useAuth() {
@@ -68,7 +69,7 @@ export function useAuth() {
       setProfile({
         id: u.id,
         fullName: u.email?.split('@')[0] || 'User',
-        role: 'staff',
+        role: 'doctor',
         email: u.email || '',
         physicianId: null,
         physicianName: null,

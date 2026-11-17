@@ -136,6 +136,9 @@ export async function createDoctorLoginAccount(opts: {
   const { data: sessionData } = await supabase.auth.getSession();
   const adminSession = sessionData.session;
 
+  // The doctor's account is confirmed by the admin right away (no email step).
+  // If "Confirm email" is OFF in Supabase this is already true; if it is ON,
+  // the admin_confirm_doctor() function (supabase/doctor_auto_confirm.sql) confirms it below.
   const { data: signData, error: signErr } = await supabase.auth.signUp({
     email,
     password,
@@ -144,16 +147,27 @@ export async function createDoctorLoginAccount(opts: {
         full_name: opts.physicianName,
         role: 'doctor',
       },
+      emailRedirectTo: undefined,
     },
   });
 
   if (signErr) throw signErr;
-  const newUserId = signData.user?.id;
-  if (!newUserId) {
-    throw new Error(
-      'Account created but no user id returned. Check email confirmation settings in Supabase.'
-    );
+
+  const newUser = signData.user;
+  if (!newUser?.id) {
+    throw new Error('Could not create the account. Please try again.');
   }
+  // With "Confirm email" ON, Supabase hides duplicates by returning a user with no identities
+  if (Array.isArray(newUser.identities) && newUser.identities.length === 0) {
+    await restoreAdminSession(
+      adminSession
+        ? { access_token: adminSession.access_token, refresh_token: adminSession.refresh_token }
+        : null
+    );
+    throw new Error('This email is already registered. Use "Link existing account" instead.');
+  }
+  const newUserId = newUser.id;
+  const alreadyConfirmed = !!newUser.email_confirmed_at;
 
   await restoreAdminSession(
     adminSession
@@ -178,6 +192,19 @@ export async function createDoctorLoginAccount(opts: {
     throw new Error(
       `Account created but profile link failed: ${upErr.message}. Run doctor_accounts.sql.`
     );
+  }
+
+  if (!alreadyConfirmed) {
+    const { error: confirmErr } = await supabase.rpc('admin_confirm_doctor', {
+      p_user_id: newUserId,
+    });
+    if (confirmErr) {
+      throw new Error(
+        'Account created, but it could not be confirmed automatically, so the doctor cannot log in yet. ' +
+          'Run supabase/doctor_auto_confirm.sql in Supabase (or turn off "Confirm email" in Authentication → Providers → Email). ' +
+          `(${confirmErr.message})`
+      );
+    }
   }
 
   return { userId: newUserId };

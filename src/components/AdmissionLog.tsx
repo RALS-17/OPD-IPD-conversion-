@@ -4,29 +4,12 @@ import {
   Search,
   Edit2,
   Trash2,
-  AlertTriangle,
-  Bookmark,
-  BookmarkPlus,
-  X,
-  Filter,
 } from 'lucide-react';
 import type { Admission, YesNo } from '../types';
 import { formatTime12 } from '../hooks/useAdmissions';
 import AdmissionForm from './AdmissionForm';
-import SearchablePhysicianSelect from './SearchablePhysicianSelect';
 
-const VIEWS_KEY = 'opd-ipd-admission-views';
 const PENDING_DAYS = 3;
-
-interface SavedView {
-  id: string;
-  name: string;
-  search: string;
-  source: string;
-  advised: string;
-  admitted: string;
-  physician: string;
-}
 
 interface AdmissionLogProps {
   admissions: Admission[];
@@ -42,6 +25,11 @@ interface AdmissionLogProps {
   >;
   isDoctor?: boolean;
   physicianName?: string | null;
+  /** admin + admitting staff */
+  canAdd?: boolean;
+  canEdit?: boolean;
+  /** admin only */
+  canDelete?: boolean;
 }
 
 type IssueKind = 'missing_physician' | 'missing_date' | 'pending_advised' | 'possible_duplicate';
@@ -53,21 +41,6 @@ function daysSince(dateStr: string): number | null {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.floor((start.getTime() - d.getTime()) / (24 * 60 * 60 * 1000));
-}
-
-function loadViews(): SavedView[] {
-  try {
-    const raw = localStorage.getItem(VIEWS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveViews(views: SavedView[]) {
-  localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
 }
 
 function issuesFor(
@@ -111,13 +84,6 @@ function issuesFor(
   return { kinds, labels };
 }
 
-const PRESET_VIEWS: { name: string; patch: Partial<Omit<SavedView, 'id' | 'name'>> }[] = [
-  { name: 'ER only', patch: { source: 'ER', advised: 'All', admitted: 'All', physician: 'All', search: '' } },
-  { name: 'OPD only', patch: { source: 'OPD', advised: 'All', admitted: 'All', physician: 'All', search: '' } },
-  { name: 'Advised · not admitted', patch: { source: 'All', advised: 'Yes', admitted: 'No', physician: 'All', search: '' } },
-  { name: 'Pending only', patch: { source: 'All', advised: 'All', admitted: 'No', physician: 'All', search: '' } },
-];
-
 export default function AdmissionLog({
   admissions,
   onAdd,
@@ -129,7 +95,11 @@ export default function AdmissionLog({
   physicianMeta = {},
   isDoctor = false,
   physicianName = null,
+  canAdd = false,
+  canEdit = false,
+  canDelete = false,
 }: AdmissionLogProps) {
+  const showActions = canEdit || canDelete;
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editing, setEditing] = useState<Admission | null>(null);
   const [search, setSearch] = useState('');
@@ -137,9 +107,6 @@ export default function AdmissionLog({
   const [filterAdvised, setFilterAdvised] = useState('All');
   const [filterAdmitted, setFilterAdmitted] = useState('All');
   const [filterPhysician, setFilterPhysician] = useState('All');
-  const [savedViews, setSavedViews] = useState<SavedView[]>(() => loadViews());
-  const [saveName, setSaveName] = useState('');
-  const [showSaveInput, setShowSaveInput] = useState(false);
   const [issueFilter, setIssueFilter] = useState<'all' | 'issues'>('all');
 
   const physicianOptions = useMemo(() => {
@@ -219,60 +186,25 @@ export default function AdmissionLog({
     issueMap,
   ]);
 
-  const applyView = (v: Partial<SavedView>) => {
-    setSearch(v.search ?? '');
-    setFilterSource(v.source ?? 'All');
-    setFilterAdvised(v.advised ?? 'All');
-    setFilterAdmitted(v.admitted ?? 'All');
-    setFilterPhysician(v.physician ?? 'All');
-    setIssueFilter('all');
-  };
-
   const clearFilters = () => {
-    applyView({
-      search: '',
-      source: 'All',
-      advised: 'All',
-      admitted: 'All',
-      physician: 'All',
-    });
+    setSearch('');
+    setFilterSource('All');
+    setFilterAdvised('All');
+    setFilterAdmitted('All');
+    setFilterPhysician('All');
     setIssueFilter('all');
-  };
-
-  const handleSaveView = () => {
-    const name = saveName.trim();
-    if (!name) return;
-    const next: SavedView = {
-      id: crypto.randomUUID(),
-      name,
-      search,
-      source: filterSource,
-      advised: filterAdvised,
-      admitted: filterAdmitted,
-      physician: filterPhysician,
-    };
-    const views = [...savedViews, next];
-    setSavedViews(views);
-    saveViews(views);
-    setSaveName('');
-    setShowSaveInput(false);
-  };
-
-  const handleDeleteView = (id: string) => {
-    const views = savedViews.filter((v) => v.id !== id);
-    setSavedViews(views);
-    saveViews(views);
   };
 
   const handleEdit = (admission: Admission) => {
+    if (!canEdit) return;
     setEditing(admission);
     setIsFormOpen(true);
   };
 
   const handleSave = (data: Omit<Admission, 'id' | 'createdAt'>) => {
     if (editing) {
-      onUpdate(editing.id, data);
-    } else {
+      if (canEdit) onUpdate(editing.id, data);
+    } else if (canAdd) {
       onAdd(data);
     }
     setEditing(null);
@@ -291,42 +223,51 @@ export default function AdmissionLog({
     filterPhysician !== 'All' ||
     issueFilter === 'issues';
 
-  const emptyHint = !admissions.length
+  const emptyHint: { title: string; body: string; action: string | null } = !admissions.length
     ? {
         title: 'No admissions yet',
-        body: 'Add the first admission to start tracking OPD → IPD conversion.',
-        action: 'Add New Admission',
+        body: canAdd
+          ? 'Add the first admission to start tracking OPD → IPD conversion.'
+          : 'There are no admissions to show yet.',
+        action: canAdd ? 'Add New Admission' : null,
       }
     : {
         title: 'No matching admissions',
         body: hasActiveFilters
-          ? 'Try clearing filters or pick a different saved view.'
+          ? 'Try clearing the filters.'
           : 'Nothing to show for this list.',
-        action: hasActiveFilters ? 'Clear filters' : 'Add New Admission',
+        action: hasActiveFilters ? 'Clear filters' : canAdd ? 'Add New Admission' : null,
       };
 
-  const ActionButtons = ({ a }: { a: Admission }) => (
-    <div className="flex items-center gap-0.5">
-      <button
-        type="button"
-        onClick={() => handleEdit(a)}
-        className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-[#1348f3] transition-colors"
-        title="Edit"
-      >
-        <Edit2 size={13} />
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          if (confirm('Delete this admission record?')) onDelete(a.id);
-        }}
-        className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors"
-        title="Delete"
-      >
-        <Trash2 size={13} />
-      </button>
-    </div>
-  );
+  const ActionButtons = ({ a }: { a: Admission }) => {
+    if (!showActions) return null;
+    return (
+      <div className="flex items-center gap-0.5">
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => handleEdit(a)}
+            className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-[#1348f3] transition-colors"
+            title="Edit"
+          >
+            <Edit2 size={13} />
+          </button>
+        )}
+        {canDelete && (
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('Delete this admission record?')) onDelete(a.id);
+            }}
+            className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors"
+            title="Delete"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-2 h-full min-h-0">
@@ -355,9 +296,9 @@ export default function AdmissionLog({
             className="h-8 text-[11px] border border-slate-200 rounded-md px-2.5 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
           >
             <option value="All">All sources</option>
-            <option value="OPD">OPD</option>
-            <option value="ER">ER</option>
-            <option value="Direct">Direct</option>
+            <option value="OPD">Total OPD Consults</option>
+            <option value="ER">Total ER seen</option>
+            <option value="Direct">Total Direct Admission</option>
           </select>
           <select
             value={filterPhysician}
@@ -387,17 +328,19 @@ export default function AdmissionLog({
             <option value="Yes">Admitted: Yes</option>
             <option value="No">Admitted: No</option>
           </select>
-          <button
-            type="button"
-            onClick={() => {
-              setEditing(null);
-              setIsFormOpen(true);
-            }}
-            className="inline-flex items-center gap-1.5 h-8 px-3 bg-[#1348f3] text-white text-[11px] font-semibold rounded-md hover:bg-blue-700"
-          >
-            <Plus size={14} />
-            Add New Admission
-          </button>
+          {canAdd && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setIsFormOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 h-8 px-3 bg-[#1348f3] text-white text-[11px] font-semibold rounded-md hover:bg-blue-700"
+            >
+              <Plus size={14} />
+              Add New Admission
+            </button>
+          )}
         </div>
       </div>
 
@@ -421,106 +364,27 @@ export default function AdmissionLog({
         </div>
       )}
 
-      {/* Saved views */}
-      <div className="shrink-0 flex flex-wrap items-center gap-1.5">
-        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mr-0.5">
-          Views
-        </span>
-        {PRESET_VIEWS.map((p) => (
-          <button
-            key={p.name}
-            type="button"
-            onClick={() => applyView(p.patch)}
-            className="px-2 py-1 text-[10.5px] font-medium rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300"
-          >
-            {p.name}
-          </button>
-        ))}
-        {savedViews.map((v) => (
-          <span
-            key={v.id}
-            className="inline-flex items-center gap-0.5 pl-2 pr-1 py-0.5 text-[10.5px] font-medium rounded-md border border-[#1348f3]/30 bg-blue-50 text-[#1348f3]"
-          >
-            <button type="button" onClick={() => applyView(v)} className="hover:underline">
-              {v.name}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDeleteView(v.id)}
-              className="p-0.5 rounded hover:bg-blue-100"
-              title="Remove view"
-            >
-              <X size={11} />
-            </button>
-          </span>
-        ))}
-        {!showSaveInput ? (
-          <button
-            type="button"
-            onClick={() => setShowSaveInput(true)}
-            className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-medium rounded-md border border-dashed border-slate-300 text-slate-500 hover:border-[#1348f3] hover:text-[#1348f3]"
-          >
-            <BookmarkPlus size={12} />
-            Save current
-          </button>
-        ) : (
-          <span className="inline-flex items-center gap-1">
-            <input
-              type="text"
-              value={saveName}
-              onChange={(e) => setSaveName(e.target.value)}
-              placeholder="View name"
-              maxLength={40}
-              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 w-[120px] focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveView();
-                if (e.key === 'Escape') {
-                  setShowSaveInput(false);
-                  setSaveName('');
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={handleSaveView}
-              className="inline-flex items-center gap-0.5 px-2 py-1 text-[10.5px] font-semibold rounded-md bg-[#1348f3] text-white"
-            >
-              <Bookmark size={11} />
-              Save
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowSaveInput(false);
-                setSaveName('');
-              }}
-              className="p-1 text-slate-400 hover:text-slate-600"
-            >
-              <X size={13} />
-            </button>
-          </span>
-        )}
-      </div>
-
       {/* List */}
       <div className="flex-1 min-h-0 flex flex-col">
         {filtered.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center px-4 py-10 text-center">
             <p className="text-[13px] font-semibold text-slate-700">{emptyHint.title}</p>
             <p className="text-[11.5px] text-slate-500 mt-1 max-w-sm">{emptyHint.body}</p>
-            <button
-              type="button"
-              onClick={() => {
-                if (hasActiveFilters && admissions.length) clearFilters();
-                else {
-                  setEditing(null);
-                  setIsFormOpen(true);
-                }
-              }}
-              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1348f3] text-white text-[12px] font-semibold rounded-md hover:bg-blue-700"
-            >
-              {emptyHint.action}
-            </button>
+            {emptyHint.action && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (hasActiveFilters && admissions.length) clearFilters();
+                  else if (canAdd) {
+                    setEditing(null);
+                    setIsFormOpen(true);
+                  }
+                }}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1348f3] text-white text-[12px] font-semibold rounded-md hover:bg-blue-700"
+              >
+                {emptyHint.action}
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -571,7 +435,7 @@ export default function AdmissionLog({
                       {a.diagnosis || a.chiefComplaint || '—'}
                     </p>
                     <p className="text-[10px] text-slate-500 mt-0.5 truncate">
-                      OPD: {a.opdAttendingPhysician || '—'} · To Dr: {a.opdPatientStatus || 'New'} · HP: {a.housePhysician || '—'}
+                      OPD: {a.opdAttendingPhysician || '—'} · HP: {a.housePhysician || '—'}
                     </p>
                   </div>
                 );
@@ -584,7 +448,6 @@ export default function AdmissionLog({
                 <thead className="sticky top-0 bg-white z-10">
                   <tr className="text-left text-slate-400 border-b border-slate-200 uppercase tracking-wide text-[10px]">
                     <th className="px-3 py-2 font-semibold text-[10px] min-w-[140px]">Patient Name</th>
-                    <th className="px-2 py-2 font-semibold text-[10px]">Old/New</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">HMO/CASH</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">Type</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">Source</th>
@@ -594,10 +457,11 @@ export default function AdmissionLog({
                     <th className="px-2 py-2 font-semibold text-[10px]">Admitted</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">Date / Time</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">OPD Physician</th>
-                    <th className="px-2 py-2 font-semibold text-[10px]">To OPD Dr</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">Admitting Physician</th>
                     <th className="px-2 py-2 font-semibold text-[10px]">House Physician</th>
-                    <th className="px-2 py-2 font-semibold text-[10px] text-right">Actions</th>
+                    {showActions && (
+                      <th className="px-2 py-2 font-semibold text-[10px] text-right">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -620,17 +484,6 @@ export default function AdmissionLog({
                           <p className="font-medium text-slate-800 text-[11.5px] leading-tight truncate" title={a.patientName}>
                             {a.patientName}
                           </p>
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <span
-                            className={`inline-flex px-1.5 py-0.5 rounded text-[9.5px] font-semibold ${
-                              a.oldNew === 'New'
-                                ? 'bg-blue-50 text-blue-700'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {a.oldNew}
-                          </span>
                         </td>
                         <td className="px-2 py-1.5">
                           <span
@@ -693,19 +546,8 @@ export default function AdmissionLog({
                         </td>
                         <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap">
                           {a.opdAttendingPhysician || (
-                            <span className="text-amber-600 font-medium">Missing</span>
+                            <span className="text-amber-600 font-medium">NA</span>
                           )}
-                        </td>
-                        <td className="px-2 py-1.5 whitespace-nowrap">
-                          <span
-                            className={`inline-flex px-1.5 py-0.5 rounded text-[9.5px] font-semibold ${
-                              a.opdPatientStatus === 'Old'
-                                ? 'bg-slate-100 text-slate-700'
-                                : 'bg-emerald-50 text-emerald-700'
-                            }`}
-                          >
-                            {a.opdPatientStatus === 'Old' ? 'Old' : 'New'}
-                          </span>
                         </td>
                         <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap">
                           {a.admittingPhysician || '—'}
@@ -713,11 +555,13 @@ export default function AdmissionLog({
                         <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap">
                           {a.housePhysician || '—'}
                         </td>
-                        <td className="px-2 py-1.5">
-                          <div className="flex items-center justify-end">
-                            <ActionButtons a={a} />
-                          </div>
-                        </td>
+                        {showActions && (
+                          <td className="px-2 py-1.5">
+                            <div className="flex items-center justify-end">
+                              <ActionButtons a={a} />
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -738,7 +582,7 @@ export default function AdmissionLog({
       </div>
 
       <AdmissionForm
-        isOpen={isFormOpen}
+        isOpen={isFormOpen && (canAdd || canEdit)}
         onClose={handleClose}
         onSave={handleSave}
         initialData={editing}

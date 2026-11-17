@@ -13,6 +13,7 @@ import {
   History,
 } from 'lucide-react';
 import type { Admission, PhysicianStats, RankedItem } from '../types';
+import { HOUSE_PHYSICIAN_DEPARTMENTS } from '../types';
 
 interface MixStats {
   hmo: number;
@@ -68,6 +69,8 @@ interface DashboardProps {
   doctorFilter?: string;
   onDoctorFilter?: (v: string) => void;
   physicianNames?: string[];
+  recordScopeFilter?: 'consults' | 'admitted';
+  onRecordScopeFilter?: (v: 'consults' | 'admitted') => void;
   onExport: () => void;
   onPrintSnapshot?: () => void;
   filteredCount: number;
@@ -149,6 +152,8 @@ export default function Dashboard({
   doctorFilter = 'All',
   onDoctorFilter,
   physicianNames = [],
+  recordScopeFilter = 'consults',
+  onRecordScopeFilter,
   onExport,
   onPrintSnapshot,
   filteredCount,
@@ -166,9 +171,11 @@ export default function Dashboard({
   const [diagDept, setDiagDept] = useState('All');
 
   const departmentOptions = useMemo(() => {
+    const house = new Set(HOUSE_PHYSICIAN_DEPARTMENTS as readonly string[]);
     const set = new Set<string>();
     Object.values(departmentByName).forEach((d) => {
-      if (d?.trim()) set.add(d.trim());
+      const name = (d || '').trim();
+      if (name && !house.has(name)) set.add(name);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [departmentByName]);
@@ -212,11 +219,21 @@ export default function Dashboard({
   );
 
   const sourceLabel =
-    sourceFilter === 'All' ? 'All sources' : sourceFilter;
+    sourceFilter === 'All'
+      ? 'All sources'
+      : sourceFilter === 'OPD'
+        ? 'Total OPD Consults'
+        : sourceFilter === 'ER'
+          ? 'Total ER seen'
+          : 'Total Direct Admission';
   const conversionTitle =
     sourceFilter === 'All'
       ? 'Admission Conversion'
-      : `${sourceFilter} → IPD Conversion`;
+      : sourceFilter === 'OPD'
+        ? 'OPD → IPD Conversion'
+        : sourceFilter === 'ER'
+          ? 'ER → IPD Conversion'
+          : 'Direct → IPD Conversion';
 
   // Chart geometry (single SVG so line + dots share coordinates)
   const chartW = 400;
@@ -309,15 +326,26 @@ export default function Dashboard({
             title="Filter by source of admission"
           >
             <option value="All">All sources</option>
-            <option value="OPD">OPD</option>
-            <option value="ER">ER</option>
-            <option value="Direct">Direct</option>
+            <option value="OPD">Total OPD Consults</option>
+            <option value="ER">Total ER seen</option>
+            <option value="Direct">Total Direct Admission</option>
+          </select>
+          <select
+            value={recordScopeFilter}
+            onChange={(e) =>
+              onRecordScopeFilter?.(e.target.value as 'consults' | 'admitted')
+            }
+            className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1 text-slate-600 bg-white focus:outline-none"
+            title="All consult records or admitted patients only"
+          >
+            <option value="consults">OPD Consults / All records</option>
+            <option value="admitted">Admitted Patients only</option>
           </select>
           <select
             value={departmentFilter}
             onChange={(e) => onDepartmentFilter?.(e.target.value)}
             className="text-[10px] border border-slate-200 rounded-md px-1.5 py-1 text-slate-600 bg-white focus:outline-none max-w-[140px]"
-            title="Filter by department"
+            title="Filter by clinical department"
           >
             <option value="All">All departments</option>
             {departmentOptions.map((d) => (
@@ -344,169 +372,88 @@ export default function Dashboard({
           </select>
           <span className="text-[10px] text-slate-400 ml-1">{filteredCount} records</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          {onPrintSnapshot && (
-            <button
-              type="button"
-              onClick={onPrintSnapshot}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-md hover:bg-slate-50"
-            >
-              Print / PDF
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onExport}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-white bg-[#0d9f6e] rounded-md hover:bg-emerald-700"
-          >
-            Export filtered CSV
-          </button>
-        </div>
       </div>
-      {/* KPI row - main metrics (3 cards; Advised removed) */}
-      <div className="grid grid-cols-3 gap-1.5 shrink-0">
+      {/* KPI row: 6 cards in one line */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 shrink-0">
         {[
           {
             icon: Users,
             color: 'bg-blue-50 text-[#1348f3]',
             label:
               sourceFilter === 'ER'
-                ? 'Total ER'
+                ? 'Total ER seen'
                 : sourceFilter === 'Direct'
-                  ? 'Total Direct'
-                  : sourceFilter === 'All'
-                    ? 'Total Cases'
-                    : 'Total OPD',
+                  ? 'Total Direct Admission'
+                  : sourceFilter === 'OPD'
+                    ? 'Total OPD Consults'
+                    : 'Total Cases',
             value: kpis.totalOpd,
-            prev: prevKpis?.totalOpd,
-            suffix: '',
+            sub:
+              prevKpis != null
+                ? `${periodLabel} ${
+                    kpis.totalOpd - prevKpis.totalOpd >= 0 ? '+' : ''
+                  }${kpis.totalOpd - prevKpis.totalOpd}`
+                : undefined,
           },
           {
             icon: BedDouble,
             color: 'bg-emerald-50 text-[#0d9f6e]',
             label: 'Actual Admissions',
             value: kpis.actual,
-            prev: prevKpis?.actual,
-            suffix: '',
-          },
-          {
-            icon: TrendingUp,
-            color: 'bg-blue-50 text-[#1348f3]',
-            label: 'Overall Conversion Rate',
-            value: kpis.conversion,
-            display: `${kpis.conversion}%`,
-            prev: prevKpis?.conversion,
-            suffix: ' pts',
-          },
-        ].map((kpi, i) => {
-          const Icon = kpi.icon;
-          const d = deltaLabel(kpi.value as number, kpi.prev, kpi.suffix);
-          const tip = d
-            ? `${kpi.label}: ${kpi.display ?? kpi.value} · ${periodLabel} · ${d} ${compareLabel || ''}`
-            : `${kpi.label}: ${kpi.display ?? kpi.value} · ${periodLabel}`;
-          return (
-            <div
-              key={i}
-              className="dash-card dash-tip bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5 flex items-center gap-2.5 h-[72px]"
-              data-tip={tip}
-            >
-              <div className={`w-8 h-8 rounded-md ${kpi.color} flex items-center justify-center shrink-0`}>
-                <Icon size={15} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-medium text-slate-500 truncate">{kpi.label}</p>
-                <p className="text-[18px] font-bold text-slate-900 leading-tight">
-                  {kpi.display ?? kpi.value}
-                </p>
-                <p className="text-[10px] text-slate-400 flex items-center gap-1 flex-wrap">
-                  <span className="inline-flex items-center gap-0.5">
-                    <Calendar size={10} /> {periodLabel}
-                  </span>
-                  {d && (
-                    <span className={`font-semibold ${deltaTone(kpi.value as number, kpi.prev)}`}>
-                      {d}
-                      {compareLabel ? ` ${compareLabel.replace(/^vs /, '')}` : ''}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Patient status, type & payment mix */}
-      <div className="grid grid-cols-6 gap-1.5 shrink-0">
-        {[
-          {
-            icon: History,
-            color: 'bg-slate-100 text-slate-600',
-            label: 'Old',
-            value: mix.old,
-            sub: `${mix.oldPct}% of patients`,
-            subColor: 'text-slate-500',
-          },
-          {
-            icon: UserPlus,
-            color: 'bg-emerald-50 text-emerald-600',
-            label: 'New',
-            value: mix.new,
-            sub: `${mix.newPct}% of patients`,
-            subColor: 'text-emerald-600',
+            sub:
+              prevKpis != null
+                ? `${periodLabel} ${
+                    kpis.actual - prevKpis.actual >= 0 ? '+' : ''
+                  }${kpis.actual - prevKpis.actual}`
+                : undefined,
           },
           {
             icon: Shield,
-            color: 'bg-blue-50 text-[#1348f3]',
+            color: 'bg-blue-50 text-blue-700',
             label: 'HMO',
             value: mix.hmo,
-            sub: `${mix.hmoPct}% of payments`,
-            subColor: 'text-blue-600',
+            sub: `${mix.hmoPct}%`,
           },
           {
             icon: Wallet,
-            color: 'bg-amber-50 text-amber-600',
+            color: 'bg-amber-50 text-amber-700',
             label: 'CASH',
             value: mix.cash,
-            sub: `${mix.cashPct}% of payments`,
-            subColor: 'text-amber-600',
+            sub: `${mix.cashPct}%`,
           },
           {
             icon: UserRound,
-            color: 'bg-violet-50 text-violet-600',
+            color: 'bg-indigo-50 text-indigo-700',
             label: 'Private',
             value: mix.private,
             sub: 'Patient type',
-            subColor: 'text-slate-400',
           },
           {
             icon: Footprints,
-            color: 'bg-teal-50 text-teal-600',
+            color: 'bg-teal-50 text-teal-700',
             label: 'Walk-in',
             value: mix.walkIn,
             sub: 'Patient type',
-            subColor: 'text-slate-400',
           },
-        ].map((kpi, i) => {
-          const Icon = kpi.icon;
-          return (
+        ].map((k) => (
+          <div
+            key={k.label}
+            className="bg-white rounded-md border border-slate-200 shadow-sm px-2.5 py-2 flex items-center gap-2 min-w-0"
+          >
             <div
-              key={i}
-              className="dash-card dash-tip bg-white rounded-md border border-slate-200 shadow-sm px-3 py-2.5 flex items-center gap-2.5 h-[72px]"
-              data-tip={`${kpi.label}: ${kpi.value} · ${kpi.sub}`}
+              className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${k.color}`}
             >
-              <div
-                className={`w-8 h-8 rounded-md ${kpi.color} flex items-center justify-center shrink-0`}
-              >
-                <Icon size={15} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-medium text-slate-500 truncate">{kpi.label}</p>
-                <p className="text-[18px] font-bold text-slate-900 leading-tight">{kpi.value}</p>
-                <p className={`text-[10px] ${kpi.subColor}`}>{kpi.sub}</p>
-              </div>
+              <k.icon size={14} />
             </div>
-          );
-        })}
+            <div className="min-w-0">
+              <p className="text-[9.5px] text-slate-500 font-medium truncate">{k.label}</p>
+              <p className="text-[16px] font-bold text-slate-900 leading-tight">{k.value}</p>
+              {k.sub != null && (
+                <p className="text-[9px] text-slate-400 truncate">{k.sub}</p>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Main body: left (gauge+chart / physicians) | right (diagnoses / complaints) */}

@@ -139,30 +139,50 @@ export interface StatsWithOpd {
   isManualOpd?: boolean;
 }
 
-/** Permanent totals replace system-encoded count when present. */
+/** Permanent totals replace system-encoded count when present.
+ * Also includes physicians that only have a manual total (no admissions yet).
+ */
 export function applyOpdConsultOverrides<T extends StatsWithOpd>(
   stats: T[],
   overrides: OpdConsultOverrides
 ): T[] {
-  return stats
-    .map((s) => {
-      const key = s.physician.trim();
-      const has = Object.prototype.hasOwnProperty.call(overrides, key);
-      if (!has) {
-        return { ...s, systemOpdConsults: s.totalOpdConsults, isManualOpd: false };
-      }
-      const totalOpdConsults = Math.max(0, Math.floor(overrides[key]));
-      const conversionRate =
-        totalOpdConsults > 0
-          ? Math.round((s.actualAdmissionsFromOpd / totalOpdConsults) * 1000) / 10
-          : 0;
-      return {
-        ...s,
-        systemOpdConsults: s.totalOpdConsults,
-        totalOpdConsults,
-        conversionRate,
-        isManualOpd: true,
-      };
-    })
-    .sort((a, b) => b.conversionRate - a.conversionRate);
+  const mapped = stats.map((s) => {
+    const key = s.physician.trim();
+    const has = Object.prototype.hasOwnProperty.call(overrides, key);
+    if (!has) {
+      return { ...s, systemOpdConsults: s.totalOpdConsults, isManualOpd: false };
+    }
+    const totalOpdConsults = Math.max(0, Math.floor(overrides[key]));
+    const conversionRate =
+      totalOpdConsults > 0
+        ? Math.round((s.actualAdmissionsFromOpd / totalOpdConsults) * 1000) / 10
+        : 0;
+    return {
+      ...s,
+      systemOpdConsults: s.totalOpdConsults,
+      totalOpdConsults,
+      conversionRate,
+      isManualOpd: true,
+    };
+  });
+
+  const present = new Set(mapped.map((s) => s.physician.trim()));
+  const extras: T[] = [];
+  Object.entries(overrides).forEach(([name, total]) => {
+    const key = name.trim();
+    if (!key || present.has(key)) return;
+    const totalOpdConsults = Math.max(0, Math.floor(Number(total) || 0));
+    extras.push({
+      physician: key,
+      totalOpdConsults,
+      opdAdvisedAdmission: 0,
+      actualAdmissionsFromOpd: 0,
+      conversionRate: 0,
+      totalAdmissions: 0,
+      systemOpdConsults: 0,
+      isManualOpd: true,
+    } as T);
+  });
+
+  return [...mapped, ...extras].sort((a, b) => b.conversionRate - a.conversionRate);
 }

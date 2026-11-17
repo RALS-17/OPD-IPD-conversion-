@@ -59,6 +59,15 @@ export interface PhysicianStats {
   actualAdmissionsFromOpd: number;
   conversionRate: number;
   totalAdmissions: number;
+  /** Patient mix: Private / Walk-in × HMO / CASH (counted from records or daily entries) */
+  privateHmo: number;
+  privateCash: number;
+  walkInHmo: number;
+  walkInCash: number;
+  /** Total OPD before daily entries were applied (Admission Log count) */
+  systemOpdConsults?: number;
+  /** True when the numbers come from manual daily entries */
+  isManualOpd?: boolean;
 }
 
 export interface RankedItem {

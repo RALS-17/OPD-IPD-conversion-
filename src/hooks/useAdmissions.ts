@@ -389,11 +389,6 @@ export function useAdmissions() {
           actorName: auditActorRef.current.name,
           actorEmail: auditActorRef.current.email,
         });
-        // If this doctor has a permanent OPD total, +1 so edited baseline stays current
-        if (data.opdAttendingPhysician) {
-          const { incrementOpdConsultTotalIfSet } = await import('../lib/opdConsultOverrides');
-          void incrementOpdConsultTotalIfSet(data.opdAttendingPhysician);
-        }
         return;
       } catch (err) {
         console.error('Supabase insert failed', err);
@@ -415,10 +410,6 @@ export function useAdmissions() {
       actorName: auditActorRef.current.name,
       actorEmail: auditActorRef.current.email,
     });
-    if (data.opdAttendingPhysician) {
-      const { incrementOpdConsultTotalIfSet } = await import('../lib/opdConsultOverrides');
-      void incrementOpdConsultTotalIfSet(data.opdAttendingPhysician);
-    }
   }, []);
 
   const updateAdmission = useCallback(async (id: string, data: Partial<Admission>) => {
@@ -506,10 +497,21 @@ export function useAdmissions() {
           actualAdmissionsFromOpd: 0,
           conversionRate: 0,
           totalAdmissions: 0,
+          privateHmo: 0,
+          privateCash: 0,
+          walkInHmo: 0,
+          walkInCash: 0,
         });
       }
       const stats = map.get(name)!;
       stats.totalOpdConsults += 1;
+      // Patient mix: Private / Walk-in × HMO / CASH
+      const isHmo = a.hhoCash === 'HHO';
+      if (a.patientType === 'Walk-in') {
+        if (isHmo) stats.walkInHmo += 1;
+        else stats.walkInCash += 1;
+      } else if (isHmo) stats.privateHmo += 1;
+      else stats.privateCash += 1;
       if (a.advisedForAdmission === 'Yes') stats.opdAdvisedAdmission += 1;
       // Count as converted admission under this attending physician
       if (a.actuallyAdmitted === 'Yes') {

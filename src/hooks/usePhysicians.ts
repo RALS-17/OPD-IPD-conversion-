@@ -133,6 +133,25 @@ export function usePhysicians() {
     []
   );
 
+  /**
+   * Quick-add used by the Daily Entries window: name only, everything else NA.
+   * Returns the new row (or throws) so the caller knows whether it worked.
+   */
+  const createPhysicianByName = useCallback(async (name: string): Promise<Physician> => {
+    if (!isSupabaseConfigured) {
+      throw new Error('Connect Supabase first (set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY).');
+    }
+    const row = await insertPhysician({
+      name: name.trim(),
+      department: 'NA',
+      staffType: 'Active',
+      specialization: '',
+      subSpecialization: '',
+    });
+    setPhysicians((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+    return row;
+  }, []);
+
   const editPhysician = useCallback(
     async (
       id: string,
@@ -206,6 +225,7 @@ export function usePhysicians() {
     housePhysicianNames,
     loginLinked,
     addPhysician,
+    createPhysicianByName,
     editPhysician,
     removePhysician,
     reload,

@@ -20,6 +20,8 @@ interface PhysiciansProps {
   usingSupabase: boolean;
   error: string | null;
   canManageAccounts?: boolean;
+  /** false = roster is view-only (add / edit / delete hidden) */
+  canEdit?: boolean;
 }
 
 export default function Physicians({
@@ -31,6 +33,7 @@ export default function Physicians({
   usingSupabase,
   error,
   canManageAccounts = true,
+  canEdit = true,
 }: PhysiciansProps) {
   const [deptFilter, setDeptFilter] = useState('All');
   const [staffFilter, setStaffFilter] = useState<'All' | PhysicianStaffType>('All');
@@ -258,14 +261,16 @@ export default function Physicians({
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 text-[11px] font-semibold text-white bg-[#1348f3] rounded-md hover:bg-blue-700"
-          >
-            <Plus size={14} />
-            Add physician
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="inline-flex items-center gap-1.5 h-8 px-3 text-[11px] font-semibold text-white bg-[#1348f3] rounded-md hover:bg-blue-700"
+            >
+              <Plus size={14} />
+              Add physician
+            </button>
+          )}
         </div>
       </div>
 
@@ -281,7 +286,7 @@ export default function Physicians({
       )}
 
       {/* Add physician modal */}
-      {addOpen && (
+      {addOpen && canEdit && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <button
             type="button"
@@ -483,13 +488,15 @@ export default function Physicians({
                 <th className="px-3 py-1.5 font-semibold text-[10px]">Staff</th>
                 <th className="px-3 py-1.5 font-semibold text-[10px]">Specialization</th>
                 <th className="px-3 py-1.5 font-semibold text-[10px]">Login</th>
-                <th className="px-3 py-1.5 font-semibold text-[10px] text-right">Actions</th>
+                {canEdit && (
+                  <th className="px-3 py-1.5 font-semibold text-[10px] text-right">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
+                  <td colSpan={canEdit ? 7 : 6} className="px-3 py-8 text-center text-slate-400">
                     No physicians yet
                   </td>
                 </tr>
@@ -621,6 +628,7 @@ export default function Physicians({
                           <span className="text-[10px] text-slate-400">—</span>
                         )}
                       </td>
+                      {canEdit && (
                       <td className="px-3 py-1.5 text-right">
                         {isEditing ? (
                           <div className="inline-flex flex-col items-end gap-1">
@@ -706,6 +714,7 @@ export default function Physicians({
                           </div>
                         )}
                       </td>
+                      )}
                     </tr>
                   );
                 })

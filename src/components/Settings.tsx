@@ -64,6 +64,7 @@ export default function Settings({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
         {/* Hospital Profile */}
+        <fieldset disabled={!isAdmin} className="m-0 min-w-0 border-0 p-0">
         <div className={`${card} p-3`}>
           <div className="flex items-center gap-1.5 mb-2.5">
             <Building2 size={14} className="text-[#1348f3]" />
@@ -111,7 +112,10 @@ export default function Settings({
           </div>
         </div>
 
+        </fieldset>
+
         {/* Conversion Targets */}
+        <fieldset disabled={!isAdmin} className="m-0 min-w-0 border-0 p-0">
         <div className={`${card} p-3`}>
           <div className="flex items-center gap-1.5 mb-2.5">
             <Target size={14} className="text-[#0d9f6e]" />
@@ -170,6 +174,14 @@ export default function Settings({
           </div>
         </div>
 
+
+        </fieldset>
+
+        {!isAdmin && (
+          <p className="lg:col-span-2 text-[11px] text-slate-500">
+            Hospital profile and targets can only be changed by an administrator.
+          </p>
+        )}
 
         {/* Appearance */}
         <div className={`${card} p-3 lg:col-span-2`}>

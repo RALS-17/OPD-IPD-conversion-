@@ -310,21 +310,12 @@ export default function AdmissionForm({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className={labelCls}>Old / New (Hospital)</label>
-                  <select name="oldNew" value={form.oldNew} onChange={handleChange} className={field}>
-                    <option value="New">New</option>
-                    <option value="Old">Old</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>HMO / CASH</label>
-                  <select name="hhoCash" value={form.hhoCash} onChange={handleChange} className={field}>
-                    <option value="HHO">HMO (HHO)</option>
-                    <option value="CASH">CASH</option>
-                  </select>
-                </div>
+              <div>
+                <label className={labelCls}>HMO / CASH</label>
+                <select name="hhoCash" value={form.hhoCash} onChange={handleChange} className={field}>
+                  <option value="HHO">HMO (HHO)</option>
+                  <option value="CASH">CASH</option>
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -427,22 +418,6 @@ export default function AdmissionForm({
                 fieldClass={field}
                 labelClass={labelCls}
               />
-
-              <div>
-                <label className={labelCls}>Old / New to this OPD doctor</label>
-                <select
-                  name="opdPatientStatus"
-                  value={form.opdPatientStatus}
-                  onChange={handleChange}
-                  className={field}
-                >
-                  <option value="New">New to this doctor</option>
-                  <option value="Old">Old patient of this doctor</option>
-                </select>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Separate from hospital Old/New — e.g. returning patient, first time with this doctor.
-                </p>
-              </div>
 
               <div className="flex items-center justify-between py-0.5">
                 <label className="text-[11px] font-medium text-slate-600">Actually Admitted</label>

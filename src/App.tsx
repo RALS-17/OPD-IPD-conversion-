@@ -11,6 +11,7 @@ import { useAdmissions } from './hooks/useAdmissions';
 import { useSettings } from './hooks/useSettings';
 import { usePhysicians } from './hooks/usePhysicians';
 import { useAuth } from './hooks/useAuth';
+import { useDailyEntries } from './hooks/useDailyEntries';
 import type { Page } from './types';
 import {
   filterByDateRange,
@@ -25,11 +26,12 @@ import { buildNotifications } from './lib/notifications';
 import PhysicianDetail from './components/PhysicianDetail';
 import { printDashboardSnapshot } from './lib/printDashboard';
 import {
-  applyOpdConsultOverrides,
-  fetchOpdConsultOverrides,
-  loadOpdConsultOverrides,
-  type OpdConsultOverrides,
-} from './lib/opdConsultOverrides';
+  applyDailyEntries,
+  entryDelta,
+  filterEntriesByRange,
+  sumEntriesByPhysician,
+} from './lib/physicianDailyEntries';
+import type { DailyEntrySavePayload } from './components/DailyEntryModal';
 
 
 const PAGE_PATH: Record<Page, string> = {
@@ -85,6 +87,7 @@ export default function App() {
     signOut,
     isAuthenticated,
     isAdmin,
+    isStaff,
     isDoctor,
     physicianName,
   } = useAuth();
@@ -95,30 +98,18 @@ export default function App() {
   const [sourceFilter, setSourceFilter] = useState<'All' | 'OPD' | 'ER' | 'Direct'>('All');
   const [dashDeptFilter, setDashDeptFilter] = useState('All');
   const [dashDoctorFilter, setDashDoctorFilter] = useState('All');
+  /** consults = all records in range; admitted = only actually admitted */
+  const [recordScopeFilter, setRecordScopeFilter] = useState<'consults' | 'admitted'>('consults');
   const [dateFrom, setDateFrom] = useState(() => rangeForPreset('month')?.from || '');
   const [dateTo, setDateTo] = useState(() => rangeForPreset('month')?.to || '');
+  // Physician Summary has its own filters (independent from the Dashboard)
+  const [sumDatePreset, setSumDatePreset] = useState<DatePreset>('month');
+  const [sumDateFrom, setSumDateFrom] = useState(() => rangeForPreset('month')?.from || '');
+  const [sumDateTo, setSumDateTo] = useState(() => rangeForPreset('month')?.to || '');
+  const [sumDeptFilter, setSumDeptFilter] = useState('All');
+  const [sumDoctorFilter, setSumDoctorFilter] = useState('All');
   const [drillPhysician, setDrillPhysician] = useState<string | null>(null);
-  const [opdOverrides, setOpdOverrides] = useState<OpdConsultOverrides>(() =>
-    loadOpdConsultOverrides()
-  );
   const defaultPageSet = useRef(false);
-
-  // Load permanent OPD totals from Supabase (shared across devices)
-  useEffect(() => {
-    let cancelled = false;
-    void fetchOpdConsultOverrides().then((map) => {
-      if (!cancelled) setOpdOverrides(map);
-    });
-    const onChanged = (e: Event) => {
-      const detail = (e as CustomEvent<OpdConsultOverrides>).detail;
-      if (detail) setOpdOverrides(detail);
-    };
-    window.addEventListener('opd-totals-changed', onChanged);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('opd-totals-changed', onChanged);
-    };
-  }, []);
 
   // Set default page once profile is known (admin → Dashboard)
   useEffect(() => {
@@ -180,12 +171,20 @@ export default function App() {
     housePhysicianNames,
     loginLinked,
     addPhysician,
+    createPhysicianByName,
     editPhysician,
     removePhysician,
     loaded: physiciansLoaded,
     error: physiciansError,
     usingSupabase,
   } = usePhysicians();
+
+  const {
+    entries: dailyEntries,
+    loaded: entriesLoaded,
+    error: entriesError,
+    saveDay: saveDailyEntriesDay,
+  } = useDailyEntries();
 
   useEffect(() => {
     if (profile) {
@@ -238,7 +237,7 @@ export default function App() {
     );
   }
 
-  if (!admissionsLoaded || !settingsLoaded || !physiciansLoaded) {
+  if (!admissionsLoaded || !settingsLoaded || !physiciansLoaded || !entriesLoaded) {
     return <PageSkeleton page={currentPage} collapsed={collapsed} />;
   }
 
@@ -256,10 +255,25 @@ export default function App() {
     ])
   );
 
-  const roleScopedAdmissions = filterByPhysician(
-    admissions,
-    isDoctor ? physicianName : null
-  );
+  // Doctors only ever see their own patients. A doctor not linked to a physician sees nothing.
+  const roleScopedAdmissions = isDoctor
+    ? physicianName
+      ? filterByPhysician(admissions, physicianName)
+      : []
+    : admissions;
+
+  // Permissions: admin = everything · admitting staff = add/edit admissions only · doctor = view only
+  const canAddEditAdmissions = isAdmin || isStaff;
+  const canDeleteAdmissions = isAdmin;
+  const denied = async () => {
+    window.alert('You do not have permission to do that.');
+  };
+  // Doctors don't need the full doctor roster
+  const visiblePhysicianNames = isDoctor
+    ? physicianName
+      ? [physicianName]
+      : []
+    : physicianNames;
 
   const activeRange =
     datePreset === 'custom'
@@ -284,6 +298,9 @@ export default function App() {
     if (dashDoctorFilter !== 'All') {
       if ((a.opdAttendingPhysician || '').trim() !== dashDoctorFilter) return false;
     }
+    if (recordScopeFilter === 'admitted' && a.actuallyAdmitted !== 'Yes') {
+      return false;
+    }
     return true;
   });
 
@@ -291,31 +308,64 @@ export default function App() {
   const prevDateAdmissions = prevRangeInfo
     ? filterByDateRange(roleScopedAdmissions, prevRangeInfo.from, prevRangeInfo.to)
     : [];
-  const prevAdmissions =
+  const prevAdmissions = (
     sourceFilter === 'All'
       ? prevDateAdmissions
-      : prevDateAdmissions.filter((a) => a.source === sourceFilter);
+      : prevDateAdmissions.filter((a) => a.source === sourceFilter)
+  ).filter((a) => {
+    if (dashDeptFilter !== 'All') {
+      const dept = (departmentByName[a.opdAttendingPhysician] || '').trim();
+      if (dept !== dashDeptFilter) return false;
+    }
+    if (dashDoctorFilter !== 'All') {
+      if ((a.opdAttendingPhysician || '').trim() !== dashDoctorFilter) return false;
+    }
+    if (recordScopeFilter === 'admitted' && a.actuallyAdmitted !== 'Yes') return false;
+    return true;
+  });
 
-  // OPD consult overrides only when source filter is OPD.
-  // ER / Direct / All use filtered admission counts so conversion is never blank.
-  const useOpdOverrides = sourceFilter === 'OPD';
+  // Daily entries are OPD consult data: they apply to "All sources" and "OPD",
+  // but not to the ER-only / Direct-only views.
+  const manualApplies = sourceFilter === 'All' || sourceFilter === 'OPD';
+
+  // Doctors only ever see their own entries
+  const scopedEntries = isDoctor
+    ? dailyEntries.filter((e) => e.physician === (physicianName || ''))
+    : dailyEntries;
+
+  const matchesDashFilters = (name: string) => {
+    if (dashDeptFilter !== 'All') {
+      if ((departmentByName[name] || '').trim() !== dashDeptFilter) return false;
+    }
+    if (dashDoctorFilter !== 'All' && name.trim() !== dashDoctorFilter) return false;
+    return true;
+  };
+
+  const entriesInRange = filterEntriesByRange(scopedEntries, activeRange?.from, activeRange?.to);
+  const dashEntryTotals = sumEntriesByPhysician(
+    entriesInRange.filter((e) => matchesDashFilters(e.physician))
+  );
+
+  const prevDashEntryTotals = prevRangeInfo
+    ? sumEntriesByPhysician(
+        filterEntriesByRange(scopedEntries, prevRangeInfo.from, prevRangeInfo.to).filter((e) =>
+          matchesDashFilters(e.physician)
+        )
+      )
+    : {};
 
   const prevSystemPhysicianStats = prevRangeInfo
     ? getPhysicianStats(prevAdmissions)
     : [];
-  const prevPhysicianStats = prevRangeInfo
-    ? applyOpdConsultOverrides(prevSystemPhysicianStats, opdOverrides)
-    : [];
+  const prevPhysicianStats =
+    prevRangeInfo && manualApplies
+      ? applyDailyEntries(prevSystemPhysicianStats, prevDashEntryTotals)
+      : prevSystemPhysicianStats;
   const prevBaseKpis = prevRangeInfo ? getKpis(prevAdmissions) : null;
-  const prevSystemTotalOpd = prevSystemPhysicianStats.reduce(
-    (sum, p) => sum + p.totalOpdConsults,
-    0
-  );
-  const prevOverrideTotal = prevPhysicianStats.reduce(
-    (sum, p) => sum + p.totalOpdConsults,
-    0
-  );
-  const prevVolume = useOpdOverrides ? prevOverrideTotal : prevAdmissions.length;
+  const prevDelta = manualApplies
+    ? entryDelta(prevSystemPhysicianStats, prevPhysicianStats)
+    : null;
+  const prevVolume = prevAdmissions.length + (prevDelta?.total ?? 0);
   const prevKpis = prevBaseKpis
     ? {
         ...prevBaseKpis,
@@ -329,9 +379,7 @@ export default function App() {
 
   const prevMonthlyTrendRaw = prevRangeInfo ? getMonthlyTrend(prevAdmissions) : null;
   const prevConversionScale =
-    useOpdOverrides && prevOverrideTotal > 0 && prevSystemTotalOpd > 0
-      ? prevSystemTotalOpd / prevOverrideTotal
-      : 1;
+    prevVolume > 0 && prevAdmissions.length > 0 ? prevAdmissions.length / prevVolume : 1;
   const prevMonthlyTrend = prevMonthlyTrendRaw
     ? {
         ...prevMonthlyTrendRaw,
@@ -342,19 +390,29 @@ export default function App() {
       }
     : null;
 
-  const mix = getMix(filteredAdmissions);
   const systemPhysicianStats = getPhysicianStats(filteredAdmissions);
-  const physicianStats = applyOpdConsultOverrides(systemPhysicianStats, opdOverrides);
+  const physicianStats = manualApplies
+    ? applyDailyEntries(systemPhysicianStats, dashEntryTotals)
+    : systemPhysicianStats;
+  const delta = manualApplies ? entryDelta(systemPhysicianStats, physicianStats) : null;
+
+  // Patient-mix cards: Admission-Log counts + what the daily entries add/replace
+  const baseMix = getMix(filteredAdmissions);
+  const mixHmo = Math.max(0, baseMix.hmo + (delta?.hmo ?? 0));
+  const mixCash = Math.max(0, baseMix.cash + (delta?.cash ?? 0));
+  const mixPayTotal = mixHmo + mixCash || 1;
+  const mix = {
+    ...baseMix,
+    hmo: mixHmo,
+    cash: mixCash,
+    private: Math.max(0, baseMix.private + (delta?.private ?? 0)),
+    walkIn: Math.max(0, baseMix.walkIn + (delta?.walkIn ?? 0)),
+    hmoPct: Math.round((mixHmo / mixPayTotal) * 1000) / 10,
+    cashPct: Math.round((mixCash / mixPayTotal) * 1000) / 10,
+  };
+
   const baseKpis = getKpis(filteredAdmissions);
-  const systemTotalOpd = systemPhysicianStats.reduce(
-    (sum, p) => sum + p.totalOpdConsults,
-    0
-  );
-  const overrideTotal = physicianStats.reduce(
-    (sum, p) => sum + p.totalOpdConsults,
-    0
-  );
-  const totalVolume = useOpdOverrides ? overrideTotal : filteredAdmissions.length;
+  const totalVolume = filteredAdmissions.length + (delta?.total ?? 0);
   const kpis = {
     ...baseKpis,
     totalOpd: totalVolume,
@@ -365,8 +423,8 @@ export default function App() {
   };
   const topDiagnoses = getTopDiagnoses(filteredAdmissions, 10);
   const conversionScale =
-    useOpdOverrides && overrideTotal > 0 && systemTotalOpd > 0
-      ? systemTotalOpd / overrideTotal
+    totalVolume > 0 && filteredAdmissions.length > 0
+      ? filteredAdmissions.length / totalVolume
       : 1;
   const monthlyTrendRaw = getMonthlyTrend(filteredAdmissions);
   const monthlyTrend = {
@@ -376,7 +434,44 @@ export default function App() {
       value: Math.min(100, Math.round(pt.value * conversionScale * 10) / 10),
     })),
   };
-    const summaryPhysicianStats = systemPhysicianStats;
+
+  // Physician Summary: its own date range, all sources, daily entries applied
+  const sumRange =
+    sumDatePreset === 'custom'
+      ? { from: sumDateFrom || undefined, to: sumDateTo || undefined }
+      : rangeForPreset(sumDatePreset);
+  const sumAdmissions = filterByDateRange(roleScopedAdmissions, sumRange?.from, sumRange?.to);
+  const sumEntryTotals = sumEntriesByPhysician(
+    filterEntriesByRange(scopedEntries, sumRange?.from, sumRange?.to)
+  );
+  const summaryPhysicianStats = applyDailyEntries(getPhysicianStats(sumAdmissions), sumEntryTotals);
+
+  const errorText = (e: unknown): string => {
+    if (e instanceof Error) return e.message;
+    const m = (e as { message?: string } | null)?.message;
+    return m || 'Unknown error';
+  };
+
+  /** Save one date for many doctors at once (adds new doctors to the roster first). */
+  const handleSaveDailyEntries = async ({ date, rows, newDoctors }: DailyEntrySavePayload) => {
+    const existing = new Set(physicians.map((p) => p.name.trim().toLowerCase()));
+    for (const name of newDoctors) {
+      if (existing.has(name.trim().toLowerCase())) continue; // already in the roster
+      try {
+        await createPhysicianByName(name);
+        existing.add(name.trim().toLowerCase());
+      } catch (e) {
+        throw new Error(`Could not add doctor "${name}": ${errorText(e)}`);
+      }
+    }
+    try {
+      await saveDailyEntriesDay(date, rows);
+    } catch (e) {
+      throw new Error(
+        `Could not save the entries: ${errorText(e)}. If this is the first time, run supabase/physician_daily_entries.sql in Supabase.`
+      );
+    }
+  };
 
   const handleExportFiltered = () => {
     exportCsv(filteredAdmissions);
@@ -428,6 +523,16 @@ export default function App() {
       const r = rangeForPreset(p);
       setDateFrom(r?.from || '');
       setDateTo(r?.to || '');
+    }
+  };
+
+  const handleSumDatePreset = (preset: string) => {
+    const p = preset as DatePreset;
+    setSumDatePreset(p);
+    if (p !== 'custom') {
+      const r = rangeForPreset(p);
+      setSumDateFrom(r?.from || '');
+      setSumDateTo(r?.to || '');
     }
   };
 
@@ -543,6 +648,8 @@ export default function App() {
                 onDepartmentFilter={setDashDeptFilter}
                 doctorFilter={dashDoctorFilter}
                 onDoctorFilter={setDashDoctorFilter}
+                recordScopeFilter={recordScopeFilter}
+                onRecordScopeFilter={setRecordScopeFilter}
                 physicianNames={physicianNames}
                 onExport={handleExportFiltered}
                 onPrintSnapshot={handlePrintSnapshot}
@@ -554,10 +661,13 @@ export default function App() {
             {currentPage === 'admission-log' && (
               <AdmissionLog
                 admissions={visibleAdmissions}
-                onAdd={addAdmission}
-                onUpdate={updateAdmission}
-                onDelete={deleteAdmission}
-                physicians={physicianNames}
+                onAdd={canAddEditAdmissions ? addAdmission : denied}
+                onUpdate={canAddEditAdmissions ? updateAdmission : denied}
+                onDelete={canDeleteAdmissions ? deleteAdmission : denied}
+                canAdd={canAddEditAdmissions}
+                canEdit={canAddEditAdmissions}
+                canDelete={canDeleteAdmissions}
+                physicians={visiblePhysicianNames}
                 housePhysicians={housePhysicianNames}
                 departmentByName={departmentByName}
                 physicianMeta={physicianMeta}
@@ -572,28 +682,32 @@ export default function App() {
                 averageThreshold={settings.averageThreshold}
                 departmentByName={departmentByName}
                 onPhysicianClick={(name) => setDrillPhysician(name)}
-                opdOverrides={opdOverrides}
-                onOpdOverridesChange={setOpdOverrides}
-                datePreset={datePreset}
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                onDatePreset={handleDatePreset}
-                onDateFrom={setDateFrom}
-                onDateTo={setDateTo}
-                departmentFilter={dashDeptFilter}
-                onDepartmentFilter={setDashDeptFilter}
-                doctorFilter={dashDoctorFilter}
-                onDoctorFilter={setDashDoctorFilter}
-                physicianNames={physicianNames}
+                canEdit={isAdmin}
+                rosterNames={physicianNames}
+                entries={scopedEntries}
+                entriesError={entriesError}
+                onSaveDailyEntries={handleSaveDailyEntries}
+                datePreset={sumDatePreset}
+                dateFrom={sumDateFrom}
+                dateTo={sumDateTo}
+                onDatePreset={handleSumDatePreset}
+                onDateFrom={setSumDateFrom}
+                onDateTo={setSumDateTo}
+                departmentFilter={sumDeptFilter}
+                onDepartmentFilter={setSumDeptFilter}
+                doctorFilter={sumDoctorFilter}
+                onDoctorFilter={setSumDoctorFilter}
+                physicianNames={visiblePhysicianNames}
               />
             )}
             {currentPage === 'physicians' && !isDoctor && (
               <Physicians
                 physicians={physicians}
                 loginLinked={loginLinked}
-                onAdd={addPhysician}
-                onEdit={editPhysician}
-                onDelete={removePhysician}
+                onAdd={isAdmin ? addPhysician : denied}
+                onEdit={isAdmin ? editPhysician : denied}
+                onDelete={isAdmin ? removePhysician : denied}
+                canEdit={isAdmin}
                 usingSupabase={usingSupabase}
                 error={physiciansError}
                 canManageAccounts={isAdmin}
@@ -602,11 +716,11 @@ export default function App() {
             {currentPage === 'settings' && (
               <Settings
                 settings={settings}
-                onUpdate={updateSettings}
+                onUpdate={isAdmin ? updateSettings : () => undefined}
                 onResetSettings={resetSettings}
                 onExportCsv={() => exportCsv(roleScopedAdmissions)}
-                onClearData={clearAllData}
-                onReloadSample={reloadSampleData}
+                onClearData={isAdmin ? clearAllData : denied}
+                onReloadSample={isAdmin ? reloadSampleData : denied}
                 admissionCount={admissions.length}
                 isAdmin={isAdmin}
               />
