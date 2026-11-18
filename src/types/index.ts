@@ -89,8 +89,6 @@ export type ThemeMode = 'light' | 'dark';
 export interface AppSettings {
   hospitalName: string;
   branch: string;
-  adminName: string;
-  adminRole: string;
   targetConversion: number;
   goodThreshold: number;
   averageThreshold: number;
@@ -101,8 +99,6 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   hospitalName: 'Global Care',
   branch: 'Canlubang',
-  adminName: 'Dr. Ananya Sharma',
-  adminRole: 'Administrator',
   targetConversion: 30,
   goodThreshold: 30,
   averageThreshold: 15,

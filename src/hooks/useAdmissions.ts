@@ -11,6 +11,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { writeAudit } from '../lib/auditLog';
 import { toast, errorMessage } from '../lib/toast';
+import { rankDiagnoses } from '../lib/diagnosis';
 
 const STORAGE_KEY = 'globalcare_admissions_v3';
 
@@ -89,7 +90,16 @@ export function useAdmissions() {
           }
           return;
         } catch (err) {
-          console.error('Supabase load failed, falling back to localStorage', err);
+          // Never show another account's cached data: report the failure and show an empty list
+          console.error('Supabase load failed', err);
+          toast.error(
+            `Could not load the admission records. Please refresh the page.\n${errorMessage(err)}`
+          );
+          if (!cancelled) {
+            setAdmissions([]);
+            setLoaded(true);
+          }
+          return;
         }
       }
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -382,7 +392,7 @@ export function useAdmissions() {
 
   const getTopDiagnoses = useCallback(
     (list?: Admission[], limit = 10): RankedItem[] =>
-      rankField(list ?? admissions, 'diagnosis', limit),
+      rankDiagnoses(list ?? admissions, { limit }).items.map(({ name, count }) => ({ name, count })),
     [admissions]
   );
 

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { Admission, PhysicianStats, RankedItem } from '../types';
 import { HOUSE_PHYSICIAN_DEPARTMENTS } from '../types';
+import { rankDiagnoses, type DiagnosisMode } from '../lib/diagnosis';
 
 interface MixStats {
   hmo: number;
@@ -149,6 +150,10 @@ export default function Dashboard({
   type ZoomSection = 'gauge' | 'trend' | 'physicians' | 'diagnoses';
   const [zoomSection, setZoomSection] = useState<ZoomSection | null>(null);
   const [diagDept, setDiagDept] = useState('All');
+  /** 'all' = every diagnosis listed on a record · 'primary' = only the first one */
+  const [diagMode, setDiagMode] = useState<DiagnosisMode>('all');
+  /** include "rule out / to consider / possible …" diagnoses */
+  const [diagDifferentials, setDiagDifferentials] = useState(true);
 
   const departmentOptions = useMemo(() => {
     const house = new Set(HOUSE_PHYSICIAN_DEPARTMENTS as readonly string[]);
@@ -160,24 +165,43 @@ export default function Dashboard({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [departmentByName]);
 
-  const rankedDiagnoses = useMemo(() => {
+  // Diagnoses are split at ; and , (see lib/diagnosis.ts) and counted once per patient
+  const diagnosisRanking = useMemo(() => {
     let list = filteredAdmissions;
     if (diagDept !== 'All') {
       list = list.filter(
         (a) => (departmentByName[a.opdAttendingPhysician] || '').trim() === diagDept
       );
     }
-    const map = new Map<string, number>();
-    list.forEach((a) => {
-      const d = (a.diagnosis || '').trim();
-      if (!d) return;
-      map.set(d, (map.get(d) || 0) + 1);
+    return rankDiagnoses(list, {
+      limit: 10,
+      mode: diagMode,
+      includeDifferentials: diagDifferentials,
     });
-    return Array.from(map.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-  }, [filteredAdmissions, diagDept, departmentByName]);
+  }, [filteredAdmissions, diagDept, departmentByName, diagMode, diagDifferentials]);
+  const rankedDiagnoses = diagnosisRanking.items;
+
+  const diagnosisControls = (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 shrink-0 mb-1.5 text-[10px] text-slate-500">
+      <select
+        value={diagMode}
+        onChange={(e) => setDiagMode(e.target.value as DiagnosisMode)}
+        className="border border-slate-200 rounded-md px-1.5 py-0.5 text-slate-600 bg-white focus:outline-none"
+        title="How diagnoses are counted"
+      >
+        <option value="all">All listed diagnoses</option>
+        <option value="primary">Primary (first) only</option>
+      </select>
+      <label className="inline-flex items-center gap-1 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={diagDifferentials}
+          onChange={(e) => setDiagDifferentials(e.target.checked)}
+        />
+        Include rule-out / to consider
+      </label>
+    </div>
+  );
 
   useEffect(() => {
     if (!zoomSection) return;
@@ -783,6 +807,7 @@ export default function Dashboard({
               ))}
             </select>
           </div>
+          {diagnosisControls}
           <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
             {rankedDiagnoses.length === 0 ? (
               <div className="text-center py-6 px-2">
@@ -801,7 +826,7 @@ export default function Dashboard({
                   <div
                     key={item.name}
                     className="dash-row dash-tip flex items-center gap-1.5 py-1 px-0.5 rounded border-b border-slate-50 last:border-0 min-h-0 flex-1"
-                    data-tip={`${item.name}: ${item.count}`}
+                    data-tip={`${item.name}: ${item.count} patient${item.count !== 1 ? 's' : ''} · ${item.percent}%`}
                   >
                     <span
                       className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold shrink-0 ${
@@ -829,6 +854,10 @@ export default function Dashboard({
               })
             )}
           </div>
+          <p className="shrink-0 pt-1 text-[9.5px] text-slate-400 leading-tight">
+            Split at “;” and “,” · counted once per patient · {diagnosisRanking.patients} patient
+            {diagnosisRanking.patients !== 1 ? 's' : ''}
+          </p>
         </div>
       </div>
 
@@ -1100,6 +1129,7 @@ export default function Dashboard({
 
               {zoomSection === 'diagnoses' && (
                 <div className="space-y-2 max-w-xl mx-auto">
+                  {diagnosisControls}
                   <div className="flex justify-end mb-2">
                     <select
                       value={diagDept}
@@ -1143,8 +1173,11 @@ export default function Dashboard({
                               />
                             </div>
                           </div>
-                          <span className="text-[13px] font-semibold text-slate-600 shrink-0">
+                          <span className="text-[13px] font-semibold text-slate-600 shrink-0 text-right">
                             {item.count}
+                            <span className="block text-[10px] font-normal text-slate-400">
+                              {item.percent}%
+                            </span>
                           </span>
                         </div>
                       );

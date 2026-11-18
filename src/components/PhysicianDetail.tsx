@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { rankDiagnoses } from '../lib/diagnosis';
 import { X } from 'lucide-react';
 import type { Admission } from '../types';
 import { formatTime12 } from '../hooks/useAdmissions';
@@ -40,18 +41,7 @@ export default function PhysicianDetail({
         ? 'text-amber-600'
         : 'text-red-500';
 
-  const diagnoses = useMemo(() => {
-    const map = new Map<string, number>();
-    mine.forEach((a) => {
-      const d = (a.diagnosis || '').trim();
-      if (!d) return;
-      map.set(d, (map.get(d) || 0) + 1);
-    });
-    return Array.from(map.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 8);
-  }, [mine]);
+  const diagnoses = useMemo(() => rankDiagnoses(mine, { limit: 8 }).items, [mine]);
 
   const byMonth = useMemo(() => {
     const map = new Map<string, { total: number; admitted: number }>();

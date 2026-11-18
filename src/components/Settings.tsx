@@ -1,16 +1,59 @@
-import { useState, useEffect } from 'react';
-import { Building2, Target, Database, Trash2, Download, Sun, Moon, ScrollText } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  Building2,
+  Target,
+  Database,
+  Download,
+  Sun,
+  Moon,
+  ScrollText,
+  UserCircle,
+  KeyRound,
+  Activity,
+} from 'lucide-react';
 import { fetchAuditLogs, type AuditEntry } from '../lib/auditLog';
-import type { AppSettings } from '../types';
+import { toast } from '../lib/toast';
+import type { AppSettings, UserRole } from '../types';
+
+export interface AccountInfo {
+  fullName: string;
+  email: string;
+  role: UserRole;
+  /** Roster name this login is linked to (doctors) */
+  physicianName: string | null;
+  physicianDepartment?: string;
+}
 
 interface SettingsProps {
   settings: AppSettings;
   onUpdate: (partial: Partial<AppSettings>) => void;
   onResetSettings: () => void;
   onExportCsv: () => void;
-  onClearData: () => void | boolean | Promise<void | boolean>;
+  /** Admission records this user is allowed to see */
   admissionCount: number;
   isAdmin: boolean;
+  account: AccountInfo;
+  onChangePassword: (
+    newPassword: string
+  ) => Promise<{ ok: true } | { ok: false; message: string }>;
+  /** Shown to admins only */
+  systemInfo?: { physicians: number; dailyEntries: number; databaseConnected: boolean };
+}
+
+const ROLE_LABEL: Record<UserRole, string> = {
+  admin: 'Administrator',
+  staff: 'Admitting Staff',
+  doctor: 'Doctor',
+};
+
+const ROLE_ACCESS: Record<UserRole, string> = {
+  admin: 'Full access: dashboard, admission log, physician summary, physicians, settings.',
+  staff: 'Can add and edit admissions. Cannot delete records or open the dashboard.',
+  doctor: 'View-only access to your own patients and your own performance.',
+};
+
+function csvCell(v: unknown): string {
+  return `"${String(v ?? '').replace(/"/g, '""')}"`;
 }
 
 export default function Settings({
@@ -18,11 +61,18 @@ export default function Settings({
   onUpdate,
   onResetSettings,
   onExportCsv,
-  onClearData,
   admissionCount,
   isAdmin,
+  account,
+  onChangePassword,
+  systemInfo,
 }: SettingsProps) {
   const [message, setMessage] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [auditAction, setAuditAction] = useState('all');
+  const [auditSearch, setAuditSearch] = useState('');
   const [auditRows, setAuditRows] = useState<AuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
 
@@ -39,6 +89,64 @@ export default function Settings({
     setTimeout(() => setMessage(''), 2500);
   };
 
+  const initials =
+    (account.fullName || account.email || '?')
+      .replace(/^Dr\.?\s+/i, '')
+      .split(/\s+/)
+      .map((n) => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '?';
+
+  const handleChangePassword = async () => {
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('The two passwords do not match.');
+      return;
+    }
+    setSavingPassword(true);
+    try {
+      const res = await onChangePassword(newPassword);
+      if (res.ok) {
+        setNewPassword('');
+        setConfirmPassword('');
+        toast.success('Password changed. Use the new password next time you sign in.');
+      } else {
+        toast.error(`Could not change the password.\n${res.message}`);
+      }
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  const shownAudit = useMemo(() => {
+    const q = auditSearch.trim().toLowerCase();
+    return auditRows.filter((r) => {
+      if (auditAction !== 'all' && r.action !== auditAction) return false;
+      if (!q) return true;
+      return `${r.summary} ${r.actorName} ${r.actorEmail}`.toLowerCase().includes(q);
+    });
+  }, [auditRows, auditAction, auditSearch]);
+
+  const exportAuditCsv = () => {
+    const rows = shownAudit.map((r) =>
+      [new Date(r.createdAt).toLocaleString(), r.action, r.actorName, r.actorEmail, r.summary]
+        .map(csvCell)
+        .join(',')
+    );
+    const csv = ['When,Action,Name,Email,Summary', ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const field =
     'w-full px-2.5 py-1.5 text-[12px] border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-[#1348f3]/30 focus:border-[#1348f3]';
   const label = 'block text-[11px] font-medium text-slate-600 mb-0.5';
@@ -50,7 +158,7 @@ export default function Settings({
         <div>
           <h1 className="text-[16px] font-bold text-slate-900 leading-none">Settings</h1>
           <p className="text-slate-500 text-[11.5px] mt-0.5">
-            Configure hospital profile, conversion targets, and data tools.
+            Your account, hospital profile, conversion targets, and data tools.
           </p>
         </div>
         {message && (
@@ -61,6 +169,86 @@ export default function Settings({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+        {/* My Account */}
+        <div className={`${card} p-3 lg:col-span-2`}>
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <UserCircle size={14} className="text-[#1348f3]" />
+            <h2 className="text-[12.5px] font-semibold text-slate-800">My Account</h2>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[13px] font-bold shrink-0">
+                {initials}
+              </div>
+              <div className="min-w-0 text-[11.5px] space-y-0.5">
+                <p className="text-[13px] font-semibold text-slate-900 truncate">
+                  {account.fullName || '—'}
+                </p>
+                <p className="text-slate-500 truncate">{account.email || '—'}</p>
+                <p>
+                  <span className="inline-block px-1.5 py-0.5 rounded bg-blue-50 text-[#1348f3] text-[10px] font-semibold">
+                    {ROLE_LABEL[account.role]}
+                  </span>
+                </p>
+                {account.role === 'doctor' && (
+                  <p className="text-slate-600">
+                    Linked physician:{' '}
+                    {account.physicianName ? (
+                      <strong>
+                        {account.physicianName}
+                        {account.physicianDepartment ? ` · ${account.physicianDepartment}` : ''}
+                      </strong>
+                    ) : (
+                      <span className="text-amber-600 font-medium">
+                        not linked yet — ask an administrator to link your account, otherwise you
+                        will see no records
+                      </span>
+                    )}
+                  </p>
+                )}
+                <p className="text-[10.5px] text-slate-400 pt-0.5">{ROLE_ACCESS[account.role]}</p>
+              </div>
+            </div>
+            <form
+              className="space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleChangePassword();
+              }}
+            >
+              <div className="flex items-center gap-1.5">
+                <KeyRound size={13} className="text-slate-500" />
+                <p className="text-[11.5px] font-semibold text-slate-700">Change password</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  className={field}
+                  placeholder="New password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  className={field}
+                  placeholder="Confirm new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={savingPassword || !newPassword || !confirmPassword}
+                className="px-3 py-1.5 text-[11px] font-semibold text-white bg-[#1348f3] rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingPassword ? 'Saving…' : 'Update password'}
+              </button>
+            </form>
+          </div>
+        </div>
+
         {/* Hospital Profile */}
         <fieldset disabled={!isAdmin} className="m-0 min-w-0 border-0 p-0">
         <div className={`${card} p-3`}>
@@ -87,26 +275,10 @@ export default function Settings({
                 maxLength={60}
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className={label}>Admin Display Name</label>
-                <input
-                  className={field}
-                  value={settings.adminName}
-                  onChange={(e) => onUpdate({ adminName: e.target.value })}
-                  maxLength={80}
-                />
-              </div>
-              <div>
-                <label className={label}>Admin Role</label>
-                <input
-                  className={field}
-                  value={settings.adminRole}
-                  onChange={(e) => onUpdate({ adminRole: e.target.value })}
-                  maxLength={60}
-                />
-              </div>
-            </div>
+            <p className="text-[10px] text-slate-400">
+              Shown in the header and sidebar for every user.{' '}
+              {isAdmin ? 'Changes are saved for all users.' : 'Only an administrator can change this.'}
+            </p>
           </div>
         </div>
 
@@ -169,6 +341,12 @@ export default function Settings({
               Green ≥ {settings.goodThreshold}% · Yellow ≥ {settings.averageThreshold}% · Red
               below
             </p>
+            {settings.averageThreshold > settings.goodThreshold && (
+              <p className="text-[10.5px] text-amber-600 font-medium">
+                The Average threshold is higher than the Good threshold, so no physician can be
+                rated Yellow. Set Average lower than Good.
+              </p>
+            )}
           </div>
         </div>
 
@@ -229,7 +407,9 @@ export default function Settings({
             <h2 className="text-[12.5px] font-semibold text-slate-800">Data Tools</h2>
           </div>
           <p className="text-[11px] text-slate-500 mb-2">
-            {admissionCount} admission record{admissionCount !== 1 ? 's' : ''} in system
+            {account.role === 'doctor'
+              ? `${admissionCount} of your admission record${admissionCount !== 1 ? 's' : ''}`
+              : `${admissionCount} admission record${admissionCount !== 1 ? 's' : ''} in the system`}
           </p>
           <div className="flex flex-wrap gap-1.5">
             <button
@@ -242,34 +422,48 @@ export default function Settings({
             >
               <Download size={12} /> Export CSV
             </button>
-            {isAdmin && (
-              <>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (confirm('Clear ALL admission records? This cannot be undone.')) {
-                      const ok = await onClearData();
-                      if (ok !== false) showMsg('All data cleared');
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-red-600 bg-red-50 border border-red-100 rounded-md hover:bg-red-100"
-                >
-                  <Trash2 size={12} /> Clear all data
-                </button>
-              </>
-            )}
           </div>
-          {!isAdmin && (
-            <p className="text-[10px] text-slate-400 mt-2">
-              Only admins can clear admission data.
-            </p>
-          )}
+          <p className="text-[10px] text-slate-400 mt-2">
+            The export contains only the records you are allowed to see.
+          </p>
           <p className="text-[10px] text-slate-400 mt-2">
             Physician roster is managed under the <strong>Physicians</strong> menu (database).
           </p>
         </div>
       </div>
 
+
+      {isAdmin && systemInfo && (
+        <div className={`${card} p-3`}>
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <Activity size={14} className="text-emerald-600" />
+            <h2 className="text-[12.5px] font-semibold text-slate-800">System overview</h2>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-[11px]">
+            {[
+              ['Database', systemInfo.databaseConnected ? 'Connected' : 'Not configured'],
+              ['Admission records', String(admissionCount)],
+              ['Active physicians', String(systemInfo.physicians)],
+              ['Daily OPD entries', String(systemInfo.dailyEntries)],
+            ].map(([k, v]) => (
+              <div key={k} className="rounded-md border border-slate-100 px-2.5 py-1.5">
+                <p className="text-slate-400 text-[10px]">{k}</p>
+                <p
+                  className={`font-semibold ${
+                    k === 'Database'
+                      ? systemInfo.databaseConnected
+                        ? 'text-emerald-600'
+                        : 'text-red-600'
+                      : 'text-slate-800'
+                  }`}
+                >
+                  {v}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isAdmin && (
         <div className={`${card} p-3`}>
@@ -289,14 +483,41 @@ export default function Settings({
               Refresh
             </button>
           </div>
-          <p className="text-[10px] text-slate-400 mb-2">
-            Recent create / update / delete / export actions.
-          </p>
+          <div className="flex flex-wrap items-center gap-1.5 mb-2">
+            <select
+              value={auditAction}
+              onChange={(e) => setAuditAction(e.target.value)}
+              className="px-2 py-1 text-[11px] border border-slate-200 rounded-md bg-white"
+            >
+              <option value="all">All actions</option>
+              <option value="create">Create</option>
+              <option value="update">Update</option>
+              <option value="delete">Delete</option>
+              <option value="export">Export</option>
+            </select>
+            <input
+              value={auditSearch}
+              onChange={(e) => setAuditSearch(e.target.value)}
+              placeholder="Search who / what…"
+              className="px-2 py-1 text-[11px] border border-slate-200 rounded-md bg-white w-44"
+            />
+            <button
+              type="button"
+              onClick={exportAuditCsv}
+              disabled={shownAudit.length === 0}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-white border border-slate-200 rounded-md hover:bg-slate-50 disabled:opacity-50"
+            >
+              <Download size={11} /> CSV
+            </button>
+            <span className="text-[10px] text-slate-400">
+              Showing {shownAudit.length} of {auditRows.length} recent actions
+            </span>
+          </div>
           <div className="max-h-48 overflow-auto border border-slate-100 rounded-md">
             {auditLoading ? (
               <p className="text-[11px] text-slate-400 p-3">Loading…</p>
-            ) : auditRows.length === 0 ? (
-              <p className="text-[11px] text-slate-400 p-3">No audit entries yet</p>
+            ) : shownAudit.length === 0 ? (
+              <p className="text-[11px] text-slate-400 p-3">No audit entries found</p>
             ) : (
               <table className="w-full text-[10.5px]">
                 <thead className="sticky top-0 bg-slate-50">
@@ -308,7 +529,7 @@ export default function Settings({
                   </tr>
                 </thead>
                 <tbody>
-                  {auditRows.map((r) => (
+                  {shownAudit.map((r) => (
                     <tr key={r.id} className="border-t border-slate-50">
                       <td className="px-2 py-1 text-slate-500 whitespace-nowrap">
                         {new Date(r.createdAt).toLocaleString()}
@@ -325,22 +546,26 @@ export default function Settings({
         </div>
       )}
 
-      {isAdmin && (
-        <div className="shrink-0 flex justify-end">
+      <div className="shrink-0 flex justify-end">
           <button
             type="button"
             onClick={() => {
-              if (confirm('Reset all settings to defaults?')) {
+              if (
+                confirm(
+                  isAdmin
+                    ? 'Reset hospital profile, targets and theme to defaults for ALL users?'
+                    : 'Reset your theme to the default?'
+                )
+              ) {
                 onResetSettings();
                 showMsg('Settings reset to defaults');
               }
             }}
             className="text-[11px] text-slate-500 hover:text-slate-700 underline"
           >
-            Reset settings to defaults
+            {isAdmin ? 'Reset settings to defaults' : 'Reset my appearance'}
           </button>
         </div>
-      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
 import type { Admission, YesNo } from '../types';
 import { formatTime12 } from '../hooks/useAdmissions';
 import AdmissionForm from './AdmissionForm';
+import AdmissionDetailCard from './AdmissionDetailCard';
 
 const PENDING_DAYS = 3;
 
@@ -103,6 +104,8 @@ export default function AdmissionLog({
   const showActions = canEdit || canDelete;
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editing, setEditing] = useState<Admission | null>(null);
+  /** Record whose detail card is open (kept by id so it follows live updates) */
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterSource, setFilterSource] = useState('All');
   const [filterAdvised, setFilterAdvised] = useState('All');
@@ -227,6 +230,8 @@ export default function AdmissionLog({
     filterAdmitted !== 'All' ||
     filterPhysician !== 'All' ||
     issueFilter === 'issues';
+
+  const viewing = viewingId ? admissions.find((a) => a.id === viewingId) ?? null : null;
 
   const emptyHint: { title: string; body: string; action: string | null } = !admissions.length
     ? {
@@ -400,7 +405,13 @@ export default function AdmissionLog({
                 return (
                   <div
                     key={a.id}
-                    className={`px-3 py-2.5 border-b border-slate-100 ${
+                    onClick={() => setViewingId(a.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.target === e.currentTarget) setViewingId(a.id);
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    className={`px-3 py-2.5 border-b border-slate-100 cursor-pointer ${
                       issues?.kinds.length
                         ? 'bg-amber-50/60'
                         : idx % 2 === 0
@@ -417,7 +428,9 @@ export default function AdmissionLog({
                           {a.dateOfAdmission || 'No date'} · {formatTime12(a.timeOfAdmission)}
                         </p>
                       </div>
-                      <ActionButtons a={a} />
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <ActionButtons a={a} />
+                      </div>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1">
                       <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
@@ -476,14 +489,23 @@ export default function AdmissionLog({
                     return (
                       <tr
                         key={a.id}
-                        className={`border-b border-slate-100 ${
+                        onClick={() => setViewingId(a.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && e.target === e.currentTarget) setViewingId(a.id);
+                        }}
+                        tabIndex={0}
+                        className={`border-b border-slate-100 cursor-pointer focus:outline-none focus:bg-blue-50/60 ${
                           hasIssue
                             ? 'bg-amber-50/60'
                             : idx % 2 === 0
                               ? 'bg-white'
                               : 'bg-slate-50'
                         } hover:bg-blue-50/40 transition-colors`}
-                        title={issues?.labels.join(' · ') || undefined}
+                        title={
+                          issues?.labels.length
+                            ? `${issues.labels.join(' · ')} — click for details`
+                            : 'Click to view patient details'
+                        }
                       >
                         <td className="px-3 py-1.5 max-w-[200px]">
                           <p className="font-medium text-slate-800 text-[11.5px] leading-tight truncate" title={a.patientName}>
@@ -561,7 +583,7 @@ export default function AdmissionLog({
                           {a.housePhysician || '—'}
                         </td>
                         {showActions && (
-                          <td className="px-2 py-1.5">
+                          <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end">
                               <ActionButtons a={a} />
                             </div>
@@ -585,6 +607,26 @@ export default function AdmissionLog({
           )}
         </div>
       </div>
+
+      {viewing && (
+        <AdmissionDetailCard
+          admission={viewing}
+          warnings={issueMap.get(viewing.id)?.labels}
+          departmentByName={departmentByName}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          onClose={() => setViewingId(null)}
+          onEdit={() => {
+            setViewingId(null);
+            handleEdit(viewing);
+          }}
+          onDelete={async () => {
+            if (!confirm('Delete this admission record?')) return;
+            const ok = await onDelete(viewing.id);
+            if (ok !== false) setViewingId(null);
+          }}
+        />
+      )}
 
       <AdmissionForm
         isOpen={isFormOpen && (canAdd || canEdit)}

@@ -10,7 +10,7 @@ import PageSkeleton from './components/PageSkeleton';
 import { useAdmissions } from './hooks/useAdmissions';
 import { useSettings } from './hooks/useSettings';
 import { usePhysicians } from './hooks/usePhysicians';
-import { useAuth } from './hooks/useAuth';
+import { useAuth, type AuthProfile } from './hooks/useAuth';
 import { useDailyEntries } from './hooks/useDailyEntries';
 import type { Page } from './types';
 import {
@@ -80,20 +80,20 @@ function applyDocumentTitle(page: Page) {
 }
 
 
-export default function App() {
-  const {
-    profile,
-    loading: authLoading,
-    error: authError,
-    setError: setAuthError,
-    signIn,
-    signOut,
-    isAuthenticated,
-    isAdmin,
-    isStaff,
-    isDoctor,
-    physicianName,
-  } = useAuth();
+/**
+ * Everything that needs a signed-in user lives in AuthedApp.
+ * It is mounted with key={user id}, so signing out / switching accounts throws away ALL
+ * data, filters and realtime subscriptions of the previous user, and a fresh sign-in always
+ * loads its data with the new session (no blank screen, no leftovers from the last user).
+ */
+function AuthedApp({
+  auth,
+  profile,
+}: {
+  auth: ReturnType<typeof useAuth>;
+  profile: AuthProfile;
+}) {
+  const { signOut, changePassword, isAdmin, isStaff, isDoctor, physicianName } = auth;
 
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
@@ -116,11 +116,6 @@ export default function App() {
 
   // Set default page once profile is known (admin → Dashboard)
   useEffect(() => {
-    if (!isAuthenticated) {
-      defaultPageSet.current = false;
-      return;
-    }
-    if (!profile) return;
     if (!defaultPageSet.current) {
       defaultPageSet.current = true;
       const fromUrl = pageFromHash();
@@ -133,11 +128,10 @@ export default function App() {
       setHashForPage(next);
       applyDocumentTitle(next);
     }
-  }, [isAuthenticated, profile]);
+  }, [profile]);
 
   // Guard restricted pages only after role is known
   useEffect(() => {
-    if (!isAuthenticated || !profile) return;
     if (profile.role !== 'admin' && currentPage === 'dashboard') {
       setCurrentPage('admission-log');
       setHashForPage('admission-log');
@@ -146,7 +140,7 @@ export default function App() {
       setCurrentPage('admission-log');
       setHashForPage('admission-log');
     }
-  }, [isAuthenticated, profile, currentPage]);
+  }, [profile, currentPage]);
 
 
   const {
@@ -154,7 +148,6 @@ export default function App() {
     addAdmission,
     updateAdmission,
     deleteAdmission,
-    clearAllData,
     exportCsv,
     getPhysicianStats,
     getKpis,
@@ -165,7 +158,12 @@ export default function App() {
     loaded: admissionsLoaded,
   } = useAdmissions();
 
-  const { settings, updateSettings, resetSettings, loaded: settingsLoaded } = useSettings();
+  const {
+    settings,
+    updateSettings,
+    resetSettings,
+    loaded: settingsLoaded,
+  } = useSettings(true, isAdmin);
 
   const {
     physicians,
@@ -190,9 +188,7 @@ export default function App() {
   } = useDailyEntries();
 
   useEffect(() => {
-    if (profile) {
-      setAuditActor(profile.fullName || '', profile.email || '');
-    }
+    setAuditActor(profile.fullName || '', profile.email || '');
   }, [profile, setAuditActor]);
 
   // Apply light/dark theme (after settings hook is available)
@@ -225,20 +221,6 @@ export default function App() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, [isAdmin, isDoctor]);
-
-  if (authLoading) {
-    return <PageSkeleton page={currentPage} collapsed={collapsed} />;
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <Login
-        onLogin={signIn}
-        error={authError}
-        onClearError={() => setAuthError(null)}
-      />
-    );
-  }
 
   if (!admissionsLoaded || !settingsLoaded || !physiciansLoaded || !entriesLoaded) {
     return <PageSkeleton page={currentPage} collapsed={collapsed} />;
@@ -538,7 +520,7 @@ export default function App() {
     }
   };
 
-  const displayName = profile?.fullName || settings.adminName;
+  const displayName = profile?.fullName || profile?.email || 'User';
   const displayRole =
     profile?.role === 'admin'
       ? 'Administrator'
@@ -546,7 +528,7 @@ export default function App() {
         ? 'Doctor'
         : profile?.role === 'staff'
           ? 'Staff'
-          : settings.adminRole;
+          : 'User';
   const adminInitials = displayName
     .replace('Dr. ', '')
     .split(' ')
@@ -718,12 +700,26 @@ export default function App() {
             {currentPage === 'settings' && (
               <Settings
                 settings={settings}
-                onUpdate={isAdmin ? updateSettings : () => undefined}
+                onUpdate={updateSettings}
                 onResetSettings={resetSettings}
                 onExportCsv={() => exportCsv(roleScopedAdmissions)}
-                onClearData={isAdmin ? clearAllData : denied}
-                admissionCount={admissions.length}
+                admissionCount={roleScopedAdmissions.length}
                 isAdmin={isAdmin}
+                account={{
+                  fullName: profile?.fullName || '',
+                  email: profile?.email || '',
+                  role: profile?.role ?? 'doctor',
+                  physicianName,
+                  physicianDepartment: physicianName
+                    ? departmentByName[physicianName]
+                    : undefined,
+                }}
+                onChangePassword={changePassword}
+                systemInfo={{
+                  physicians: physicians.length,
+                  dailyEntries: dailyEntries.length,
+                  databaseConnected: usingSupabase,
+                }}
               />
             )}
           </div>
@@ -744,4 +740,29 @@ export default function App() {
       )}
     </div>
   );
+}
+
+export default function App() {
+  const auth = useAuth();
+
+  if (auth.loading) {
+    return <PageSkeleton page="dashboard" collapsed={false} />;
+  }
+
+  if (!auth.isAuthenticated) {
+    return (
+      <Login
+        onLogin={auth.signIn}
+        error={auth.error}
+        onClearError={() => auth.setError(null)}
+      />
+    );
+  }
+
+  // Signed in, but the role/profile is still loading: never render data without it
+  if (!auth.profile) {
+    return <PageSkeleton page="dashboard" collapsed={false} />;
+  }
+
+  return <AuthedApp key={auth.profile.id} auth={auth} profile={auth.profile} />;
 }

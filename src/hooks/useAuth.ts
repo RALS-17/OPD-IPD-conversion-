@@ -26,7 +26,7 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadProfile = useCallback(async (u: User) => {
+  const loadProfileUnsafe = useCallback(async (u: User) => {
     if (!supabase) {
       setProfile({
         id: u.id,
@@ -92,6 +92,26 @@ export function useAuth() {
     });
   }, []);
 
+  /** Never leaves the app waiting forever: on any failure fall back to least privilege. */
+  const loadProfile = useCallback(
+    async (u: User) => {
+      try {
+        await loadProfileUnsafe(u);
+      } catch (e) {
+        console.error('Loading profile failed', e);
+        setProfile({
+          id: u.id,
+          fullName: u.email?.split('@')[0] || 'User',
+          role: 'doctor',
+          email: u.email || '',
+          physicianId: null,
+          physicianName: null,
+        });
+      }
+    },
+    [loadProfileUnsafe]
+  );
+
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
       setLoading(false);
@@ -129,8 +149,11 @@ export function useAuth() {
         return;
       }
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        // A different person signed in → drop the previous user's profile right away
+        const nextId = next.user.id;
+        setProfile((prev) => (prev && prev.id === nextId ? prev : null));
         // Soft profile refresh — do not toggle global loading (avoids remount)
-        loadProfile(next.user);
+        void loadProfile(next.user);
       }
     });
 
@@ -165,6 +188,20 @@ export function useAuth() {
     setUser(null);
   }, []);
 
+  /** Change the signed-in user's own password. */
+  const changePassword = useCallback(
+    async (newPassword: string): Promise<{ ok: true } | { ok: false; message: string }> => {
+      if (!supabase) return { ok: false, message: 'Supabase is not configured.' };
+      if (newPassword.length < 6) {
+        return { ok: false, message: 'Password must be at least 6 characters.' };
+      }
+      const { error: updErr } = await supabase.auth.updateUser({ password: newPassword });
+      if (updErr) return { ok: false, message: updErr.message };
+      return { ok: true };
+    },
+    []
+  );
+
   const role = profile?.role;
   const isAdmin = role === 'admin';
   const isStaff = role === 'staff';
@@ -179,6 +216,7 @@ export function useAuth() {
     setError,
     signIn,
     signOut,
+    changePassword,
     isAuthenticated: Boolean(session && user),
     isAdmin,
     isStaff,
